@@ -36,6 +36,28 @@ const DEFAULT_SETTINGS: UserSettings = {
     language: "English",
 };
 
+
+const SUPPORTED_THEMES: AppTheme[] = ["light", "dark", "system"];
+const SUPPORTED_LANGUAGES = ["English", "Hindi"];
+
+function isValidEmail(value: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isValidSettings(value: UserSettings) {
+    return (
+        SUPPORTED_THEMES.includes(value.app_theme) &&
+        typeof value.email_notifications === "boolean" &&
+        typeof value.style_recommendations === "boolean" &&
+        typeof value.wardrobe_reminders === "boolean" &&
+        typeof value.saved_look_reminders === "boolean" &&
+        typeof value.product_updates === "boolean" &&
+        typeof value.ai_wardrobe_first === "boolean" &&
+        typeof value.ai_allow_external_suggestions === "boolean" &&
+        SUPPORTED_LANGUAGES.includes(value.language)
+    );
+}
+
 export default function SettingsPage() {
     const router = useRouter();
 
@@ -65,7 +87,7 @@ export default function SettingsPage() {
 
     const [isSavingSettings, setIsSavingSettings] =
         useState(false);
-    
+
     const [isDeletingAccount, setIsDeletingAccount] =
         useState(false);
 
@@ -94,25 +116,32 @@ export default function SettingsPage() {
     };
 
     useEffect(() => {
+        let isMounted = true;
+
         const loadSettings = async () => {
             const supabase = createClient();
 
-            const {
-                data: { user },
-            } = await supabase.auth.getUser();
+            try {
+                const {
+                    data: { user },
+                    error: authError,
+                } = await supabase.auth.getUser();
 
-            if (!user) {
-                setIsLoading(false);
-                return;
-            }
+                if (authError) throw authError;
 
-            setEmail(user.email ?? "");
+                if (!user) {
+                    router.replace("/login");
+                    return;
+                }
 
-            setNewEmail("");
+                if (!isMounted) return;
 
-            const { data, error } = await supabase
-                .from("user_settings")
-                .select(`
+                setEmail(user.email ?? "");
+                setNewEmail("");
+
+                const { data, error } = await supabase
+                    .from("user_settings")
+                    .select(`
                     app_theme,
                     email_notifications,
                     style_recommendations,
@@ -123,34 +152,20 @@ export default function SettingsPage() {
                     ai_allow_external_suggestions,
                     language
                 `)
-                .eq("user_id", user.id)
-                .maybeSingle();
+                    .eq("user_id", user.id)
+                    .maybeSingle();
 
-            if (error) {
-                const errorMessage =
-                    error.message
-                        .toLowerCase()
-                        .includes("rate limit")
-                        ? "Too many email change requests. Please wait a few minutes and try again."
-                        : error.message;
+                if (error) throw error;
 
-                showMessage(
-                    "error",
-                    errorMessage
-                );
-
-                return;
-            }
-
-            if (!data) {
-                const { data: createdSettings, error: createError } =
-                    await supabase
-                        .from("user_settings")
-                        .insert({
-                            user_id: user.id,
-                            ...DEFAULT_SETTINGS,
-                        })
-                        .select(`
+                if (!data) {
+                    const { data: createdSettings, error: createError } =
+                        await supabase
+                            .from("user_settings")
+                            .insert({
+                                user_id: user.id,
+                                ...DEFAULT_SETTINGS,
+                            })
+                            .select(`
                             app_theme,
                             email_notifications,
                             style_recommendations,
@@ -161,46 +176,66 @@ export default function SettingsPage() {
                             ai_allow_external_suggestions,
                             language
                         `)
-                        .single();
+                            .single();
 
-                if (createError) {
+                    if (createError) throw createError;
+
+                    if (!isMounted) return;
+
+                    const newSettings = createdSettings as UserSettings;
+
+                    if (!isValidSettings(newSettings)) {
+                        throw new Error("Invalid settings data received.");
+                    }
+
+                    setSettings(newSettings);
+                    setTheme(newSettings.app_theme);
+                } else {
+                    const loadedSettings = {
+                        ...DEFAULT_SETTINGS,
+                        ...data,
+                    } as UserSettings;
+
+                    const savedTheme = data.app_theme;
+
+                    loadedSettings.app_theme =
+                        SUPPORTED_THEMES.includes(savedTheme as AppTheme)
+                            ? (savedTheme as AppTheme)
+                            : "system";
+
+                    if (!isValidSettings(loadedSettings)) {
+                        throw new Error("Invalid settings data received.");
+                    }
+
+                    if (!isMounted) return;
+
+                    setSettings(loadedSettings);
+                    setTheme(loadedSettings.app_theme);
+                }
+            } catch (error) {
+                console.error("Load settings error:", error);
+
+                if (isMounted) {
                     showMessage(
                         "error",
-                        createError.message
+                        error instanceof Error
+                            ? error.message
+                            : "Unable to load your settings."
                     );
-
-                    setIsLoading(false);
-                    return;
                 }
-
-                const newSettings =
-                    createdSettings as UserSettings;
-
-                setSettings(newSettings);
-                setTheme(newSettings.app_theme);
-
-            } else {
-                const savedTheme = data.app_theme;
-
-                const normalizedTheme: AppTheme =
-                    savedTheme === "dark" ||
-                        savedTheme === "system"
-                        ? savedTheme
-                        : "light";
-
-                const loadedSettings: UserSettings = {
-                    ...data,
-                    app_theme: normalizedTheme,
-                } as UserSettings;
-
-                setSettings(loadedSettings);
-                setTheme(normalizedTheme);
+            } finally {
+                if (isMounted) {
+                    setIsLoading(false);
+                }
             }
-
-            setIsLoading(false);        };
+        };
 
         loadSettings();
-    }, []);
+
+        return () => {
+            isMounted = false;
+        };
+    }, [router, setTheme]);
 
     const updateSetting = <K extends keyof UserSettings>(
         key: K,
@@ -213,76 +248,104 @@ export default function SettingsPage() {
     };
 
     const handleThemeChange = async (newTheme: AppTheme) => {
+        if (!SUPPORTED_THEMES.includes(newTheme)) {
+            showMessage("error", "Please select a valid theme.");
+            return;
+        }
+
+        const previousTheme = settings.app_theme;
+
         updateSetting("app_theme", newTheme);
         setTheme(newTheme);
 
-        const supabase = createClient();
+        try {
+            const supabase = createClient();
 
-        const {
-            data: { user },
-        } = await supabase.auth.getUser();
+            const {
+                data: { user },
+                error: authError,
+            } = await supabase.auth.getUser();
 
-        if (!user) return;
+            if (authError || !user) {
+                throw new Error("Your session has expired.");
+            }
 
-        const { error } = await supabase
-            .from("user_settings")
-            .update({
-                app_theme: newTheme,
-                updated_at: new Date().toISOString(),
-            })
-            .eq("user_id", user.id);
+            const { error } = await supabase
+                .from("user_settings")
+                .update({
+                    app_theme: newTheme,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("user_id", user.id);
 
-        if (error) {
+            if (error) throw error;
+
+            showMessage("success", "Theme updated successfully.");
+        } catch (error) {
             console.error("Theme save failed:", error);
+
+            updateSetting("app_theme", previousTheme);
+            setTheme(previousTheme);
+
+            showMessage(
+                "error",
+                error instanceof Error
+                    ? error.message
+                    : "Unable to update your theme."
+            );
         }
     };
 
     const handleSaveSettings = async () => {
         setMessage("");
         setMessageType(null);
+
+        if (!isValidSettings(settings)) {
+            showMessage(
+                "error",
+                "Some settings are invalid. Please review your preferences."
+            );
+            return;
+        }
+
         setIsSavingSettings(true);
 
-        const supabase = createClient();
+        try {
+            const supabase = createClient();
 
-        const {
-            data: { user },
-        } = await supabase.auth.getUser();
+            const {
+                data: { user },
+                error: authError,
+            } = await supabase.auth.getUser();
 
-        if (!user) {
+            if (authError || !user) {
+                throw new Error("Your session has expired. Please log in again.");
+            }
+
+            const { error } = await supabase
+                .from("user_settings")
+                .upsert({
+                    user_id: user.id,
+                    ...settings,
+                    updated_at: new Date().toISOString(),
+                });
+
+            if (error) throw error;
+
+            showMessage("success", "Settings saved successfully.");
+            router.refresh();
+        } catch (error) {
+            console.error("Settings save error:", error);
+
+            showMessage(
+                "error",
+                error instanceof Error
+                    ? error.message
+                    : "Unable to save your settings."
+            );
+        } finally {
             setIsSavingSettings(false);
-
-            showMessage(
-                "error",
-                "Your session has expired."
-            );
-
-            return;
         }
-
-        const { error } = await supabase
-            .from("user_settings")
-            .upsert({
-                user_id: user.id,
-                ...settings,
-                updated_at: new Date().toISOString(),
-            });
-
-        setIsSavingSettings(false);
-
-        if (error) {
-            showMessage(
-                "error",
-                error.message
-            );
-            return;
-        }
-
-        showMessage(
-            "success",
-            "Settings saved successfully."
-        );
-
-        router.refresh();
     };
 
     const handleEmailChange = async (
@@ -293,48 +356,52 @@ export default function SettingsPage() {
         setMessage("");
         setMessageType(null);
 
-        const cleanEmail =
-            newEmail.trim().toLowerCase();
+        const cleanEmail = newEmail.trim().toLowerCase();
 
         if (!cleanEmail) {
-            showMessage(
-                "error",
-                "Please enter a new email address."
-            );
+            showMessage("error", "Please enter a new email address.");
             return;
         }
 
-        if (cleanEmail === email.toLowerCase()) {
-            showMessage(
-                "error",
-                "Please enter a different email address."
-            );
+        if (cleanEmail.length > 254 || !isValidEmail(cleanEmail)) {
+            showMessage("error", "Please enter a valid email address.");
+            return;
+        }
+
+        if (cleanEmail === email.trim().toLowerCase()) {
+            showMessage("error", "Please enter a different email address.");
             return;
         }
 
         setIsUpdatingEmail(true);
 
-        const supabase = createClient();
+        try {
+            const supabase = createClient();
 
-        const { error } =
-            await supabase.auth.updateUser({
+            const { error } = await supabase.auth.updateUser({
                 email: cleanEmail,
             });
 
-        setIsUpdatingEmail(false);
+            if (error) throw error;
 
-        if (error) {
+            setNewEmail("");
+
+            showMessage(
+                "success",
+                "Confirmation email sent. Please check your new email address to confirm the change."
+            );
+        } catch (error) {
+            console.error("Email update error:", error);
+
             showMessage(
                 "error",
-                error.message
+                error instanceof Error
+                    ? error.message
+                    : "Unable to update your email address."
             );
-            return;
+        } finally {
+            setIsUpdatingEmail(false);
         }
-
-        showMessage(
-            "success",
-            "Confirmation email sent. Please check your new email address to confirm the change."
-        );
     };
 
     const handlePasswordChange = async (
@@ -346,58 +413,52 @@ export default function SettingsPage() {
         setMessageType(null);
 
         if (!newPassword) {
-            showMessage(
-                "error",
-                "Please enter a new password."
-            );
+            showMessage("error", "Please enter a new password.");
             return;
         }
 
-        if (newPassword.length < 6) {
-            showMessage(
-                "error",
-                "Password must be at least 6 characters."
-            );
+        if (newPassword.length < 8) {
+            showMessage("error", "Password must be at least 8 characters.");
             return;
         }
 
-        if (
-            newPassword !==
-            confirmPassword
-        ) {
-            showMessage(
-                "error",
-                "Passwords do not match."
-            );
+        if (newPassword.length > 72) {
+            showMessage("error", "Password is too long.");
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            showMessage("error", "Passwords do not match.");
             return;
         }
 
         setIsSavingPassword(true);
 
-        const supabase = createClient();
+        try {
+            const supabase = createClient();
 
-        const { error } =
-            await supabase.auth.updateUser({
+            const { error } = await supabase.auth.updateUser({
                 password: newPassword,
             });
 
-        setIsSavingPassword(false);
+            if (error) throw error;
 
-        if (error) {
+            setNewPassword("");
+            setConfirmPassword("");
+
+            showMessage("success", "Password updated successfully.");
+        } catch (error) {
+            console.error("Password update error:", error);
+
             showMessage(
                 "error",
-                error.message
+                error instanceof Error
+                    ? error.message
+                    : "Unable to update your password."
             );
-            return;
+        } finally {
+            setIsSavingPassword(false);
         }
-
-        setNewPassword("");
-        setConfirmPassword("");
-
-        showMessage(
-            "success",
-            "Password updated successfully."
-        );
     };
 
     const handleDeleteAccount = async () => {
@@ -498,7 +559,7 @@ export default function SettingsPage() {
 
                 {/* SETTINGS HERO */}
 
-                <section className="relative mb-7 overflow-hidden rounded-[30px] border border-[#eadfe1] bg-gradient-to-br from-[#f7e5e7] via-[#fcf5f3] to-[#f5dedf] px-6 py-8 sm:px-9 sm:py-10">
+                <section className="relative mb-7 overflow-hidden rounded-[30px] border border-[#eadfe1] bg-gradient-to-br from-[#f7e5e7] via-[#fcf5f3] to-[#f5dedf] px-6 py-8 transition-colors dark:border-[#44383d] dark:from-[#302329] dark:via-[#292126] dark:to-[#211c1f] sm:px-9 sm:py-10">
 
                     {/* DECOR */}
                     <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-white/60 blur-3xl" />
@@ -517,11 +578,11 @@ export default function SettingsPage() {
 
                         </div>
 
-                        <h1 className="mt-5 font-serif text-4xl tracking-[-0.045em] text-[#111111] sm:text-5xl">
+                        <h1 className="mt-5 font-serif text-4xl tracking-[-0.045em] text-[#111111] dark:text-[#f7f2f3] sm:text-5xl">
                             Settings.
                         </h1>
 
-                        <p className="mt-3 max-w-[570px] text-sm leading-6 text-[#75676b]">
+                        <p className="mt-3 max-w-[570px] text-sm leading-6 text-[#75676b] dark:text-[#c0b3b7]">
                             Shape Stylora around you — manage your account,
                             styling preferences, notifications and security.
                         </p>
@@ -552,14 +613,14 @@ export default function SettingsPage() {
                     <div
                         role="status"
                         className={`mb-6 flex items-center gap-3 rounded-[18px] border px-5 py-4 ${messageType === "success"
-                                ? "border-[#d5e2d1] bg-[#f1f6ef] text-[#5f7858]"
-                                : "border-[#efd0d3] bg-[#fff3f3] text-[#a34d55]"
+                            ? "border-[#d5e2d1] bg-[#f1f6ef] text-[#5f7858]"
+                            : "border-[#efd0d3] bg-[#fff3f3] text-[#a34d55]"
                             }`}
                     >
                         <div
                             className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${messageType === "success"
-                                    ? "bg-[#dfeadb]"
-                                    : "bg-[#f8dfe1]"
+                                ? "bg-[#dfeadb]"
+                                : "bg-[#f8dfe1]"
                                 }`}
                         >
                             {messageType === "success" ? "✓" : "!"}
@@ -581,10 +642,10 @@ export default function SettingsPage() {
 
                 {/* ACCOUNT */}
 
-                <section className="mb-6 overflow-hidden rounded-[26px] border border-[#eadfe1] bg-white">
+                <section className="mb-6 overflow-hidden rounded-[26px] border border-[#eadfe1] bg-white transition-colors dark:border-[#332d30] dark:bg-[#1b191b]">
 
                     {/* SECTION HEADER */}
-                    <div className="border-b border-[#eee1e4] bg-[#fcf8f7] px-6 py-5 sm:px-7">
+                    <div className="border-b border-[#eee1e4] bg-[#fcf8f7] px-6 py-5 transition-colors dark:border-[#3b3437] dark:bg-[#242124] sm:px-7">
 
                         <div className="flex items-start gap-4">
 
@@ -597,11 +658,11 @@ export default function SettingsPage() {
                                     Your Account
                                 </p>
 
-                                <h3 className="mt-1 font-serif text-2xl text-[#111111]">
+                                <h3 className="mt-1 font-serif text-2xl text-[#111111] dark:text-[#f7f2f3]">
                                     Account Details
                                 </h3>
 
-                                <p className="mt-1 text-xs leading-5 text-[#8c7a7f]">
+                                <p className="mt-1 text-xs leading-5 text-[#8c7a7f] dark:text-[#b8aaae]">
                                     Manage the email address connected to your Stylora account.
                                 </p>
                             </div>
@@ -733,6 +794,7 @@ export default function SettingsPage() {
                             ]}
                             onClick={() => handleThemeChange("dark")}
                         />
+                        {/*
 
                         <ThemeCard
                             title="System"
@@ -745,8 +807,9 @@ export default function SettingsPage() {
                             ]}
                             onClick={() => handleThemeChange("system")}
                         />
+                        */}
 
-                    </div> 
+                    </div>
 
 
                     <div className="mt-4 rounded-[16px] border border-[#eadfe1] bg-[#fcf8f7] px-4 py-3">
@@ -760,142 +823,129 @@ export default function SettingsPage() {
                 </section>
 
                 {/* NOTIFICATIONS */}
-                <section className="mb-6 rounded-[26px] border border-[#eadfe1] bg-white p-6 shadow-[0_10px_30px_rgba(91,58,67,0.03)] sm:p-7">
+
+                <section className="mb-6 rounded-[26px] border border-[#eadfe1] bg-white p-6 shadow-[0_10px_30px_rgba(91,58,67,0.03)] transition-colors dark:border-[#332d30] dark:bg-[#1b191b] dark:shadow-none sm:p-7">
+
+                    {/* SECTION HEADING */}
 
                     <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#b47787]">
                         Stay In The Loop
                     </p>
 
-                    <h3 className="mt-1 font-serif text-2xl text-[#111111]">
+                    <h3 className="mt-1 font-serif text-2xl text-[#111111] dark:text-[#f7f2f3]">
                         Notifications
                     </h3>
 
-                    <p className="mt-1 text-xs leading-5 text-[#8c7a7f]">
+                    <p className="mt-1 text-xs leading-5 text-[#8c7a7f] dark:text-[#b8aaae]">
                         Control which Stylora updates you want to receive.
                     </p>
 
-                    <div className="mt-6 divide-y divide-[#eee2e4] rounded-[20px] border border-[#eadfe1] bg-[#fcf8f7] px-5 py-4">
-                        <SettingToggle
-                            title="Email Notifications"
-                            description="Receive important Stylora updates by email."
-                            checked={
-                                settings.email_notifications
-                            }
-                            onChange={(value) =>
-                                updateSetting(
-                                    "email_notifications",
-                                    value
-                                )
-                            }
-                        />
+                    {/* NOTIFICATION SETTINGS */}
 
-                        <SettingToggle
-                            title="Style Recommendations"
-                            description="Receive personalized styling suggestions."
-                            checked={
-                                settings.style_recommendations
-                            }
-                            onChange={(value) =>
-                                updateSetting(
-                                    "style_recommendations",
-                                    value
-                                )
-                            }
-                        />
+                    <div className="mt-6 divide-y divide-[#eee2e4] rounded-[20px] border border-[#eadfe1] bg-[#fcf8f7] px-5 py-4 transition-colors dark:divide-[#3b3437] dark:border-[#3b3437] dark:bg-[#242124]">
 
-                        <SettingToggle
-                            title="Wardrobe Reminders"
-                            description="Get reminders to keep your wardrobe updated."
-                            checked={
-                                settings.wardrobe_reminders
-                            }
-                            onChange={(value) =>
-                                updateSetting(
-                                    "wardrobe_reminders",
-                                    value
-                                )
-                            }
-                        />
+                        <div className="dark:[&_*]:transition-colors">
 
-                        <SettingToggle
-                            title="Saved Look Reminders"
-                            description="Receive reminders related to saved outfits."
-                            checked={
-                                settings.saved_look_reminders
-                            }
-                            onChange={(value) =>
-                                updateSetting(
-                                    "saved_look_reminders",
-                                    value
-                                )
-                            }
-                        />
+                            <SettingToggle
+                                title="Email Notifications"
+                                description="Receive important Stylora updates by email."
+                                checked={settings.email_notifications}
+                                onChange={(value) =>
+                                    updateSetting("email_notifications", value)
+                                }
+                            />
 
-                        <SettingToggle
-                            title="Product Updates"
-                            description="Receive news about new Stylora features."
-                            checked={
-                                settings.product_updates
-                            }
-                            onChange={(value) =>
-                                updateSetting(
-                                    "product_updates",
-                                    value
-                                )
-                            }
-                        />
+                            <SettingToggle
+                                title="Style Recommendations"
+                                description="Receive personalized styling suggestions."
+                                checked={settings.style_recommendations}
+                                onChange={(value) =>
+                                    updateSetting("style_recommendations", value)
+                                }
+                            />
+
+                            <SettingToggle
+                                title="Wardrobe Reminders"
+                                description="Get reminders to keep your wardrobe updated."
+                                checked={settings.wardrobe_reminders}
+                                onChange={(value) =>
+                                    updateSetting("wardrobe_reminders", value)
+                                }
+                            />
+
+                            <SettingToggle
+                                title="Saved Look Reminders"
+                                description="Receive reminders related to saved outfits."
+                                checked={settings.saved_look_reminders}
+                                onChange={(value) =>
+                                    updateSetting("saved_look_reminders", value)
+                                }
+                            />
+
+                            <SettingToggle
+                                title="Product Updates"
+                                description="Receive news about new Stylora features."
+                                checked={settings.product_updates}
+                                onChange={(value) =>
+                                    updateSetting("product_updates", value)
+                                }
+                            />
+
+                        </div>
+
                     </div>
+
                 </section>
 
                 {/* AI PREFERENCES */}
-                <section className="mb-6 rounded-[26px] border border-[#eadfe1] bg-gradient-to-br from-white to-[#fcf7f6] p-6 shadow-[0_10px_30px_rgba(91,58,67,0.03)] sm:p-7">
+
+                <section className="mb-6 rounded-[26px] border border-[#eadfe1] bg-gradient-to-br from-white to-[#fcf7f6] p-6 shadow-[0_10px_30px_rgba(91,58,67,0.03)] transition-colors dark:border-[#332d30] dark:from-[#1b191b] dark:to-[#242124] dark:shadow-none sm:p-7">
+
+                    {/* SECTION LABEL */}
 
                     <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#b47787]">
                         ✦ Styling Intelligence
                     </p>
 
-                    <h3 className="mt-1 font-serif text-2xl text-[#111111]">
+                    {/* HEADING */}
+
+                    <h3 className="mt-1 font-serif text-2xl text-[#111111] dark:text-[#f7f2f3]">
                         AI Stylist Preferences
                     </h3>
 
-                    <p className="mt-1 text-xs leading-5 text-[#8c7a7f]">
+                    <p className="mt-1 text-xs leading-5 text-[#8c7a7f] dark:text-[#b8aaae]">
                         Decide how Stylora should create recommendations.
                     </p>
 
-                    <div className="mt-6 divide-y divide-[#eee2e4] rounded-[20px] border border-[#eadfe1] bg-white/70 px-5 py-4">
+                    {/* AI PREFERENCE SETTINGS */}
+
+                    <div className="mt-6 divide-y divide-[#eee2e4] rounded-[20px] border border-[#eadfe1] bg-white/70 px-5 py-4 transition-colors dark:divide-[#3b3437] dark:border-[#3b3437] dark:bg-[#242124]">
+
                         <SettingToggle
                             title="Wardrobe First"
                             description="Prioritize clothes you already own when creating outfits."
-                            checked={
-                                settings.ai_wardrobe_first
-                            }
+                            checked={settings.ai_wardrobe_first}
                             onChange={(value) =>
-                                updateSetting(
-                                    "ai_wardrobe_first",
-                                    value
-                                )
+                                updateSetting("ai_wardrobe_first", value)
                             }
                         />
 
                         <SettingToggle
                             title="Allow External Suggestions"
                             description="Allow Stylora to suggest items that are not currently in your wardrobe."
-                            checked={
-                                settings.ai_allow_external_suggestions
-                            }
+                            checked={settings.ai_allow_external_suggestions}
                             onChange={(value) =>
-                                updateSetting(
-                                    "ai_allow_external_suggestions",
-                                    value
-                                )
+                                updateSetting("ai_allow_external_suggestions", value)
                             }
                         />
+
                     </div>
+
                 </section>
 
                 {/* LANGUAGE */}
 
-                <section className="mb-6 rounded-[26px] border border-[#eadfe1] bg-white p-6 shadow-[0_10px_30px_rgba(91,58,67,0.03)] sm:p-7">
+                <section className="mb-6 rounded-[26px] border border-[#eadfe1] bg-white p-6 shadow-[0_10px_30px_rgba(91,58,67,0.03)] transition-colors dark:border-[#332d30] dark:bg-[#1b191b] dark:shadow-none sm:p-7">
 
                     <div className="flex items-start gap-4">
 
@@ -908,11 +958,11 @@ export default function SettingsPage() {
                                 Your Experience
                             </p>
 
-                            <h3 className="mt-1 font-serif text-2xl text-[#111111]">
+                            <h3 className="mt-1 font-serif text-2xl text-[#111111] dark:text-[#f7f2f3]">
                                 Language
                             </h3>
 
-                            <p className="mt-1 text-xs leading-5 text-[#8c7a7f]">
+                            <p className="mt-1 text-xs leading-5 text-[#8c7a7f] dark:text-[#a99da2]">
                                 Choose your preferred Stylora language.
                             </p>
                         </div>
@@ -921,19 +971,27 @@ export default function SettingsPage() {
 
                     <div className="mt-6">
 
-                        <label className="mb-2 block text-[9px] font-semibold uppercase tracking-[0.16em] text-[#806b71]">
+                        <label className="mb-2 block text-[9px] font-semibold uppercase tracking-[0.16em] text-[#806b71] dark:text-[#c0b3b7]">
                             Preferred Language
                         </label>
 
                         <select
-                            value={settings.language}
-                            onChange={(event) =>
-                                updateSetting(
-                                    "language",
-                                    event.target.value
-                                )
+                            value={
+                                SUPPORTED_LANGUAGES.includes(settings.language)
+                                    ? settings.language
+                                    : "English"
                             }
-                            className="w-full cursor-pointer rounded-[16px] border border-[#e5d6da] bg-[#fcf8f7] px-4 py-3.5 text-sm text-[#4f4548] outline-none transition focus:border-[#c88e9b] focus:ring-2 focus:ring-[#f4dfe3]"
+                            onChange={(event) => {
+                                const selectedLanguage = event.target.value;
+
+                                if (!SUPPORTED_LANGUAGES.includes(selectedLanguage)) {
+                                    showMessage("error", "Please select a supported language.");
+                                    return;
+                                }
+
+                                updateSetting("language", selectedLanguage);
+                            }}
+                            className="w-full cursor-pointer rounded-[16px] border border-[#e5d6da] bg-[#fcf8f7] px-4 py-3.5 text-sm text-[#4f4548] outline-none transition focus:border-[#c88e9b] focus:ring-2 focus:ring-[#f4dfe3] dark:border-[#51454a] dark:bg-[#242124] dark:text-[#f7f2f3]"
                         >
                             <option value="English">
                                 English
@@ -950,18 +1008,18 @@ export default function SettingsPage() {
 
                 {/* SAVE SETTINGS */}
 
-                <div className="mb-8 rounded-[24px] border border-[#eadfe1] bg-gradient-to-r from-[#f8e7ea] via-[#fcf5f3] to-[#f6e3e5] p-5 sm:flex sm:items-center sm:justify-between sm:gap-6">
+                <div className="mb-8 rounded-[24px] border border-[#eadfe1] bg-gradient-to-r from-[#f8e7ea] via-[#fcf5f3] to-[#f6e3e5] p-5 transition-colors dark:border-[#44383d] dark:from-[#302329] dark:via-[#292126] dark:to-[#211c1f] sm:flex sm:items-center sm:justify-between sm:gap-6">
 
                     <div>
                         <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-[#b47787]">
                             Preferences
                         </p>
 
-                        <p className="mt-1 font-serif text-lg text-[#111111]">
+                        <p className="mt-1 font-serif text-lg text-[#111111] dark:text-[#f7f2f3]">
                             Everything looking right?
                         </p>
 
-                        <p className="mt-1 text-[10px] leading-5 text-[#8c7a7f]">
+                        <p className="mt-1 text-[10px] leading-5 text-[#8c7a7f] dark:text-[#a99da2]">
                             Save your latest Stylora preferences.
                         </p>
                     </div>
@@ -981,10 +1039,11 @@ export default function SettingsPage() {
 
                 {/* PASSWORD */}
 
-                <section className="mb-6 overflow-hidden rounded-[26px] border border-[#eadfe1] bg-white shadow-[0_10px_30px_rgba(91,58,67,0.03)]">
+                <section className="mb-6 overflow-hidden rounded-[26px] border border-[#eadfe1] bg-white shadow-[0_10px_30px_rgba(91,58,67,0.03)] transition-colors dark:border-[#332d30] dark:bg-[#1b191b] dark:shadow-none">
 
                     {/* HEADER */}
-                    <div className="border-b border-[#eee1e4] bg-[#fcf8f7] px-6 py-5 sm:px-7">
+
+                    <div className="border-b border-[#eee1e4] bg-[#fcf8f7] px-6 py-5 transition-colors dark:border-[#3b3437] dark:bg-[#242124] sm:px-7">
 
                         <div className="flex items-start gap-4">
 
@@ -997,11 +1056,11 @@ export default function SettingsPage() {
                                     Account Protection
                                 </p>
 
-                                <h3 className="mt-1 font-serif text-2xl text-[#111111]">
+                                <h3 className="mt-1 font-serif text-2xl text-[#111111] dark:text-[#f7f2f3]">
                                     Password & Security
                                 </h3>
 
-                                <p className="mt-1 text-xs leading-5 text-[#8c7a7f]">
+                                <p className="mt-1 text-xs leading-5 text-[#8c7a7f] dark:text-[#a99da2]">
                                     Keep your Stylora account secure with a strong password.
                                 </p>
                             </div>
@@ -1010,14 +1069,14 @@ export default function SettingsPage() {
 
                     </div>
 
-
                     {/* PASSWORD FORM */}
+
                     <form
                         onSubmit={handlePasswordChange}
                         className="p-6 sm:p-7"
                     >
 
-                        <div className="rounded-[20px] border border-[#eadfe1] bg-[#fcf8f7] p-5 sm:p-6">
+                        <div className="rounded-[20px] border border-[#eadfe1] bg-[#fcf8f7] p-5 transition-colors dark:border-[#3b3437] dark:bg-[#242124] sm:p-6">
 
                             <div className="grid gap-5 sm:grid-cols-2">
 
@@ -1026,9 +1085,7 @@ export default function SettingsPage() {
                                     placeholder="Enter new password"
                                     value={newPassword}
                                     onChange={(event) =>
-                                        setNewPassword(
-                                            event.target.value
-                                        )
+                                        setNewPassword(event.target.value)
                                     }
                                     required
                                 />
@@ -1038,19 +1095,16 @@ export default function SettingsPage() {
                                     placeholder="Confirm new password"
                                     value={confirmPassword}
                                     onChange={(event) =>
-                                        setConfirmPassword(
-                                            event.target.value
-                                        )
+                                        setConfirmPassword(event.target.value)
                                     }
                                     required
                                 />
 
                             </div>
 
+                            <div className="mt-5 flex flex-col gap-4 border-t border-[#eadfe1] pt-5 transition-colors dark:border-[#3b3437] sm:flex-row sm:items-center sm:justify-between">
 
-                            <div className="mt-5 flex flex-col gap-4 border-t border-[#eadfe1] pt-5 sm:flex-row sm:items-center sm:justify-between">
-
-                                <p className="max-w-[430px] text-[10px] leading-5 text-[#9a878c]">
+                                <p className="max-w-[430px] text-[10px] leading-5 text-[#9a878c] dark:text-[#a99da2]">
                                     Use at least 6 characters and make sure both passwords match.
                                 </p>
 
@@ -1074,43 +1128,44 @@ export default function SettingsPage() {
 
                 {/* ACCOUNT ACTIONS */}
 
-                <section className="mt-6 overflow-hidden rounded-[26px] border border-[#eadfe1] bg-white shadow-[0_10px_30px_rgba(91,58,67,0.03)]">
+                <section className="mt-6 overflow-hidden rounded-[26px] border border-[#eadfe1] bg-white shadow-[0_10px_30px_rgba(91,58,67,0.03)] transition-colors dark:border-[#332d30] dark:bg-[#1b191b] dark:shadow-none">
 
                     {/* HEADER */}
-                    <div className="border-b border-[#eee1e4] bg-[#fcf8f7] px-6 py-5 sm:px-7">
+
+                    <div className="border-b border-[#eee1e4] bg-[#fcf8f7] px-6 py-5 transition-colors dark:border-[#3b3437] dark:bg-[#242124] sm:px-7">
 
                         <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#b47787]">
                             Account Control
                         </p>
 
-                        <h3 className="mt-1 font-serif text-2xl text-[#111111]">
+                        <h3 className="mt-1 font-serif text-2xl text-[#111111] dark:text-[#f7f2f3]">
                             Account Actions
                         </h3>
 
-                        <p className="mt-1 text-xs leading-5 text-[#8c7a7f]">
+                        <p className="mt-1 text-xs leading-5 text-[#8c7a7f] dark:text-[#a99da2]">
                             Manage your current session or permanently close your Stylora account.
                         </p>
 
                     </div>
 
-
                     <div className="space-y-4 p-6 sm:p-7">
 
                         {/* SIGN OUT */}
-                        <div className="flex flex-col gap-5 rounded-[20px] border border-[#eadfe1] bg-[#fcf8f7] p-5 sm:flex-row sm:items-center sm:justify-between">
+
+                        <div className="flex flex-col gap-5 rounded-[20px] border border-[#eadfe1] bg-[#fcf8f7] p-5 transition-colors dark:border-[#3b3437] dark:bg-[#242124] sm:flex-row sm:items-center sm:justify-between">
 
                             <div className="flex items-start gap-4">
 
-                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#9f7480] shadow-sm">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#9f7480] shadow-sm dark:bg-[#332d30]">
                                     ↗
                                 </div>
 
                                 <div>
-                                    <p className="text-sm font-semibold text-[#111111]">
+                                    <p className="text-sm font-semibold text-[#111111] dark:text-[#f7f2f3]">
                                         Sign Out
                                     </p>
 
-                                    <p className="mt-1 text-xs leading-5 text-[#8c7a7f]">
+                                    <p className="mt-1 text-xs leading-5 text-[#8c7a7f] dark:text-[#a99da2]">
                                         End your current Stylora session on this device.
                                     </p>
                                 </div>
@@ -1123,15 +1178,15 @@ export default function SettingsPage() {
 
                         </div>
 
-
                         {/* DANGER ZONE */}
-                        <div className="rounded-[20px] border border-[#efcfd2] bg-[#fff7f7] p-5">
+
+                        <div className="rounded-[20px] border border-[#efcfd2] bg-[#fff7f7] p-5 transition-colors dark:border-[#704047] dark:bg-[#2b2023]">
 
                             <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
 
                                 <div className="flex items-start gap-4">
 
-                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#fbe6e7] text-[#a94d56]">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#fbe6e7] text-[#a94d56] dark:bg-[#492c32]">
                                         !
                                     </div>
 
@@ -1140,11 +1195,11 @@ export default function SettingsPage() {
                                             Danger Zone
                                         </p>
 
-                                        <p className="mt-1 text-sm font-semibold text-[#7f3038]">
+                                        <p className="mt-1 text-sm font-semibold text-[#7f3038] dark:text-[#f0a3aa]">
                                             Delete Account
                                         </p>
 
-                                        <p className="mt-1 max-w-[520px] text-xs leading-5 text-[#a05e64]">
+                                        <p className="mt-1 max-w-[520px] text-xs leading-5 text-[#a05e64] dark:text-[#d19ba0]">
                                             Permanently delete your Stylora account and associated data.
                                             This action cannot be undone.
                                         </p>
@@ -1156,7 +1211,7 @@ export default function SettingsPage() {
                                     type="button"
                                     disabled={isDeletingAccount}
                                     onClick={handleDeleteAccount}
-                                    className="shrink-0 rounded-full border border-[#d99da3] bg-white px-5 py-3 text-[9px] font-semibold uppercase tracking-[0.08em] text-[#a1444d] transition hover:border-[#a1444d] hover:bg-[#a1444d] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="shrink-0 rounded-full border border-[#d99da3] bg-white px-5 py-3 text-[9px] font-semibold uppercase tracking-[0.08em] text-[#a1444d] transition hover:border-[#a1444d] hover:bg-[#a1444d] hover:text-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#a45c65] dark:bg-[#332328] dark:text-[#f0a3aa] dark:hover:bg-[#a1444d] dark:hover:text-white"
                                 >
                                     {isDeletingAccount
                                         ? "Deleting..."
@@ -1190,7 +1245,7 @@ function SettingToggle({
         <div className="flex items-center justify-between gap-5 py-4 first:pt-0 last:pb-0">
 
             <div className="pr-3">
-                <p className="text-sm font-medium text-[#111111]">
+                <p className="text-sm font-medium text-[#111111] dark:text-white">
                     {title}
                 </p>
 
@@ -1205,14 +1260,14 @@ function SettingToggle({
                 aria-checked={checked}
                 onClick={() => onChange(!checked)}
                 className={`relative h-7 w-12 shrink-0 rounded-full transition ${checked
-                        ? "bg-[#9aaf91]"
-                        : "bg-[#ded3d6]"
+                    ? "bg-[#9aaf91]"
+                    : "bg-[#ded3d6]"
                     }`}
             >
                 <span
                     className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-all ${checked
-                            ? "left-6"
-                            : "left-1"
+                        ? "left-6"
+                        : "left-1"
                         }`}
                 />
             </button>
@@ -1258,8 +1313,8 @@ function ThemeCard({
 
                 <div
                     className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px] ${selected
-                            ? "border-[#9aaf91] bg-[#9aaf91] text-white"
-                            : "border-[#d9cccf] bg-white text-transparent"
+                        ? "border-[#9aaf91] bg-[#9aaf91] text-white"
+                        : "border-[#d9cccf] bg-white text-transparent"
                         }`}
                 >
                     ✓

@@ -376,25 +376,42 @@ export default function WardrobePage() {
         setMessage("");
         setMessageType(null);
 
-        const file =
-            event.target.files?.[0];
+        const file = event.target.files?.[0];
 
-        if (!file) {
-            return;
-        }
+        if (!file) return;
 
-        if (
-            !file.type.startsWith("image/")
-        ) {
+        const allowedImageTypes = [
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "image/gif",
+        ];
+
+        if (!allowedImageTypes.includes(file.type)) {
+            if (imagePreview) {
+                URL.revokeObjectURL(imagePreview);
+            }
+
+            setImageFile(null);
+            setImagePreview(null);
+            event.target.value = "";
+
             showMessage(
                 "error",
-                "Please select a valid image file."
+                "Please select a JPG, PNG, WEBP or GIF image."
             );
             return;
         }
 
-        // 5MB client-side limit
         if (file.size > 5 * 1024 * 1024) {
+            if (imagePreview) {
+                URL.revokeObjectURL(imagePreview);
+            }
+
+            setImageFile(null);
+            setImagePreview(null);
+            event.target.value = "";
+
             showMessage(
                 "error",
                 "Image must be smaller than 5 MB."
@@ -403,13 +420,10 @@ export default function WardrobePage() {
         }
 
         if (imagePreview) {
-            URL.revokeObjectURL(
-                imagePreview
-            );
+            URL.revokeObjectURL(imagePreview);
         }
 
-        const preview =
-            URL.createObjectURL(file);
+        const preview = URL.createObjectURL(file);
 
         setImageFile(file);
         setImagePreview(preview);
@@ -489,217 +503,219 @@ export default function WardrobePage() {
         setMessage("");
         setMessageType(null);
 
-        if (!name.trim()) {
+        // Clean input values
+        const cleanName = name.trim();
+        const cleanColor = color.trim();
+        const cleanBrand = brand.trim();
+        const cleanSize = size.trim();
+
+        // Item name validation
+        if (!cleanName) {
+            showMessage("error", "Please enter an item name.");
+            return;
+        }
+
+        if (cleanName.length < 2 || cleanName.length > 60) {
             showMessage(
                 "error",
-                "Please enter an item name."
+                "Item name must be between 2 and 60 characters."
             );
             return;
         }
 
-        if (!category) {
+        if (!/^[\p{L}\p{N}\s&'().-]+$/u.test(cleanName)) {
             showMessage(
                 "error",
-                "Please select a category."
+                "Item name contains invalid characters."
             );
             return;
+        }
+
+        // Category validation
+        if (!allowedCategories.includes(category)) {
+            showMessage(
+                "error",
+                "Please select a valid category for this collection."
+            );
+            return;
+        }
+
+        // Optional text field limits
+        if (cleanColor.length > 30) {
+            showMessage("error", "Color must not exceed 30 characters.");
+            return;
+        }
+
+        if (cleanBrand.length > 50) {
+            showMessage("error", "Brand must not exceed 50 characters.");
+            return;
+        }
+
+        if (cleanSize.length > 20) {
+            showMessage("error", "Size must not exceed 20 characters.");
+            return;
+        }
+
+        // Season validation
+        if (season && !SEASON_OPTIONS.includes(season)) {
+            showMessage("error", "Please select a valid season.");
+            return;
+        }
+
+        // Occasion validation
+        if (occasion && !OCCASION_OPTIONS.includes(occasion)) {
+            showMessage("error", "Please select a valid occasion.");
+            return;
+        }
+
+        // Image validation
+        if (imageFile) {
+            const allowedImageTypes = [
+                "image/jpeg",
+                "image/png",
+                "image/webp",
+                "image/gif",
+            ];
+
+            if (!allowedImageTypes.includes(imageFile.type)) {
+                showMessage(
+                    "error",
+                    "Please upload a JPG, PNG, WEBP or GIF image."
+                );
+                return;
+            }
+
+            if (imageFile.size > 5 * 1024 * 1024) {
+                showMessage(
+                    "error",
+                    "Image must be smaller than 5 MB."
+                );
+                return;
+            }
         }
 
         setIsSubmitting(true);
 
-        const supabase =
-            createClient();
+        try {
+            const supabase = createClient();
 
-        const {
-            data: { user },
-        } = await supabase.auth.getUser();
+            const {
+                data: { user },
+                error: authError,
+            } = await supabase.auth.getUser();
 
-        if (!user) {
-            setIsSubmitting(false);
-
-            showMessage(
-                "error",
-                "Your session has expired. Please log in again."
-            );
-
-            return;
-        }
-
-        /*
-         * Upload new image if selected.
-         * If editing without selecting a new image,
-         * existing path is returned.
-         */
-        const {
-            path: uploadedImagePath,
-            error: uploadError,
-        } = await uploadImage(user.id);
-
-        if (uploadError) {
-            setIsSubmitting(false);
-
-            showMessage(
-                "error",
-                uploadError
-            );
-
-            return;
-        }
-
-        /*
-         * EDIT EXISTING ITEM
-         */
-        if (editingItemId) {
-            const oldImagePath =
-                existingImagePath;
-
-            const { error } =
-                await supabase
-                    .from("wardrobe_items")
-                    .update({
-                        name: name.trim(),
-                        category,
-                        color:
-                            color.trim() || null,
-                        brand:
-                            brand.trim() || null,
-                        size:
-                            size.trim() || null,
-                        season:
-                            season || null,
-                        occasion:
-                            occasion || null,
-                        image_url:
-                            uploadedImagePath,
-                        updated_at:
-                            new Date().toISOString(),
-                    })
-                    .eq(
-                        "id",
-                        editingItemId
-                    )
-                    .eq(
-                        "user_id",
-                        user.id
-                    );
-
-            if (error) {
-                /*
-                 * New image uploaded but DB update
-                 * failed, so remove orphan image.
-                 */
-                if (
-                    imageFile &&
-                    uploadedImagePath &&
-                    uploadedImagePath !==
-                    oldImagePath
-                ) {
-                    await supabase.storage
-                        .from(
-                            "wardrobe-images"
-                        )
-                        .remove([
-                            uploadedImagePath,
-                        ]);
-                }
-
-                setIsSubmitting(false);
-
+            if (authError || !user) {
                 showMessage(
                     "error",
-                    error.message
+                    "Your session has expired. Please log in again."
                 );
-
                 return;
             }
 
-            /*
-             * New image successfully saved.
-             * Old image can now safely be removed.
-             */
-            if (
-                imageFile &&
-                oldImagePath &&
-                uploadedImagePath !==
-                oldImagePath
-            ) {
-                await supabase.storage
-                    .from(
-                        "wardrobe-images"
-                    )
-                    .remove([
-                        oldImagePath,
-                    ]);
+            const {
+                path: uploadedImagePath,
+                error: uploadError,
+            } = await uploadImage(user.id);
+
+            if (uploadError) {
+                showMessage("error", uploadError);
+                return;
             }
 
-            setIsSubmitting(false);
+            if (editingItemId) {
+                const oldImagePath = existingImagePath;
 
-            showMessage(
-                "success",
-                "Wardrobe item updated successfully."
-            );
-        } else {
-            /*
-             * ADD NEW ITEM
-             */
-            const { error } =
-                await supabase
+                const { error } = await supabase
+                    .from("wardrobe_items")
+                    .update({
+                        name: cleanName,
+                        category,
+                        color: cleanColor || null,
+                        brand: cleanBrand || null,
+                        size: cleanSize || null,
+                        season: season || null,
+                        occasion: occasion || null,
+                        image_url: uploadedImagePath,
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq("id", editingItemId)
+                    .eq("user_id", user.id);
+
+                if (error) {
+                    if (
+                        imageFile &&
+                        uploadedImagePath &&
+                        uploadedImagePath !== oldImagePath
+                    ) {
+                        await supabase.storage
+                            .from("wardrobe-images")
+                            .remove([uploadedImagePath]);
+                    }
+
+                    showMessage("error", error.message);
+                    return;
+                }
+
+                if (
+                    imageFile &&
+                    oldImagePath &&
+                    uploadedImagePath !== oldImagePath
+                ) {
+                    await supabase.storage
+                        .from("wardrobe-images")
+                        .remove([oldImagePath]);
+                }
+
+                showMessage(
+                    "success",
+                    "Wardrobe item updated successfully."
+                );
+            } else {
+                const { error } = await supabase
                     .from("wardrobe_items")
                     .insert({
                         user_id: user.id,
-                        name: name.trim(),
+                        name: cleanName,
                         category,
-                        color:
-                            color.trim() || null,
-                        brand:
-                            brand.trim() || null,
-                        size:
-                            size.trim() || null,
-                        season:
-                            season || null,
-                        occasion:
-                            occasion || null,
-                        image_url:
-                            uploadedImagePath,
+                        color: cleanColor || null,
+                        brand: cleanBrand || null,
+                        size: cleanSize || null,
+                        season: season || null,
+                        occasion: occasion || null,
+                        image_url: uploadedImagePath,
                     });
 
-            if (error) {
-                /*
-                 * Upload succeeded but DB insert
-                 * failed — clean up image.
-                 */
-                if (uploadedImagePath) {
-                    await supabase.storage
-                        .from(
-                            "wardrobe-images"
-                        )
-                        .remove([
-                            uploadedImagePath,
-                        ]);
+                if (error) {
+                    if (uploadedImagePath) {
+                        await supabase.storage
+                            .from("wardrobe-images")
+                            .remove([uploadedImagePath]);
+                    }
+
+                    showMessage("error", error.message);
+                    return;
                 }
 
-                setIsSubmitting(false);
-
                 showMessage(
-                    "error",
-                    error.message
+                    "success",
+                    "Item added to your wardrobe."
                 );
-
-                return;
             }
 
-            setIsSubmitting(false);
+            resetForm();
+            setShowForm(false);
+
+            await loadWardrobe();
+        } catch (error) {
+            console.error("Wardrobe save error:", error);
 
             showMessage(
-                "success",
-                "Item added to your wardrobe."
+                "error",
+                "Something went wrong. Please try again."
             );
+        } finally {
+            setIsSubmitting(false);
         }
-
-        resetForm();
-        setShowForm(false);
-
-        await loadWardrobe();
     };
 
     /*
@@ -1073,7 +1089,7 @@ export default function WardrobePage() {
 
                                             <input
                                                 type="file"
-                                                accept="image/*"
+                                                accept="image/jpeg,image/png,image/webp,image/gif"
                                                 onChange={handleImageChange}
                                                 className="hidden"
                                             />
@@ -1118,7 +1134,7 @@ export default function WardrobePage() {
 
                             {/* Category */}
                             <div className="flex flex-col gap-2">
-                                <label className="text-xs font-semibold text-[#5f5054]">
+                                <label className="text-xs font-semibold text-[#5f5054] dark:text-white">
                                     Category *
                                 </label>
 
@@ -1507,121 +1523,121 @@ export default function WardrobePage() {
                         </div>
                     </div>
                 ) : (
-                            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                                {filteredItems.map((item) => (
-                                    <article
-                                        key={item.id}
-                                        className="group overflow-hidden rounded-[24px] border border-[#eadfe1] bg-[#fcf8f7] transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(72,46,53,0.10)]"
-                                    >
+                    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {filteredItems.map((item) => (
+                            <article
+                                key={item.id}
+                                className="group overflow-hidden rounded-[24px] border border-[#eadfe1] bg-[#fcf8f7] transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(72,46,53,0.10)]"
+                            >
 
-                                        {/* ITEM IMAGE */}
-                                        <div className="relative aspect-[4/5] overflow-hidden bg-[#f6ecea]">
+                                {/* ITEM IMAGE */}
+                                <div className="relative aspect-[4/5] overflow-hidden bg-[#f6ecea]">
 
-                                            {item.display_url ? (
-                                                <img
-                                                    src={item.display_url}
-                                                    alt={item.name}
-                                                    className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
-                                                />
-                                            ) : (
-                                                <div className="flex h-full w-full flex-col items-center justify-center px-5 text-center">
-                                                    <span className="text-4xl">
-                                                        ♡
-                                                    </span>
-
-                                                    <p className="mt-3 text-xs text-[#9c888d]">
-                                                        No clothing image
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {/* CATEGORY BADGE */}
-                                            <span className="absolute left-3 top-3 rounded-full border border-white/60 bg-white/80 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#765f65] shadow-sm backdrop-blur-md">
-                                                {item.category}
+                                    {item.display_url ? (
+                                        <img
+                                            src={item.display_url}
+                                            alt={item.name}
+                                            className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                                        />
+                                    ) : (
+                                        <div className="flex h-full w-full flex-col items-center justify-center px-5 text-center">
+                                            <span className="text-4xl">
+                                                ♡
                                             </span>
 
+                                            <p className="mt-3 text-xs text-[#9c888d]">
+                                                No clothing image
+                                            </p>
                                         </div>
+                                    )}
+
+                                    {/* CATEGORY BADGE */}
+                                    <span className="absolute left-3 top-3 rounded-full border border-white/60 bg-white/80 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#765f65] shadow-sm backdrop-blur-md">
+                                        {item.category}
+                                    </span>
+
+                                </div>
 
 
-                                        {/* ITEM DETAILS */}
-                                        <div className="p-5">
+                                {/* ITEM DETAILS */}
+                                <div className="p-5">
 
-                                            <div>
-                                                <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-[#b47787]">
-                                                    Wardrobe Piece
-                                                </p>
+                                    <div>
+                                        <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-[#b47787]">
+                                            Wardrobe Piece
+                                        </p>
 
-                                                <h3 className="mt-1 font-serif text-xl leading-tight text-[#111111]">
-                                                    {item.name}
-                                                </h3>
+                                        <h3 className="mt-1 font-serif text-xl leading-tight text-[#111111]">
+                                            {item.name}
+                                        </h3>
 
-                                                {item.brand && (
-                                                    <p className="mt-1 text-xs text-[#938287]">
-                                                        {item.brand}
-                                                    </p>
-                                                )}
-                                            </div>
-
-
-                                            {/* DETAILS */}
-                                            <div className="mt-4 flex flex-wrap gap-2">
-
-                                                {item.color && (
-                                                    <span className="rounded-full border border-[#eadadd] bg-white px-3 py-1.5 text-[10px] font-medium text-[#705f64]">
-                                                        {item.color}
-                                                    </span>
-                                                )}
-
-                                                {item.size && (
-                                                    <span className="rounded-full border border-[#eadadd] bg-white px-3 py-1.5 text-[10px] font-medium text-[#705f64]">
-                                                        Size {item.size}
-                                                    </span>
-                                                )}
-
-                                                {item.season && (
-                                                    <span className="rounded-full border border-[#eadadd] bg-white px-3 py-1.5 text-[10px] font-medium text-[#705f64]">
-                                                        {item.season}
-                                                    </span>
-                                                )}
-
-                                                {item.occasion && (
-                                                    <span className="rounded-full border border-[#eadadd] bg-white px-3 py-1.5 text-[10px] font-medium text-[#705f64]">
-                                                        {item.occasion}
-                                                    </span>
-                                                )}
-
-                                            </div>
+                                        {item.brand && (
+                                            <p className="mt-1 text-xs text-[#938287]">
+                                                {item.brand}
+                                            </p>
+                                        )}
+                                    </div>
 
 
-                                            {/* ACTIONS */}
-                                            <div className="mt-5 flex items-center gap-2 border-t border-[#eee2e4] pt-4">
+                                    {/* DETAILS */}
+                                    <div className="mt-4 flex flex-wrap gap-2">
 
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        handleEdit(item)
-                                                    }
-                                                    className="flex-1 rounded-full bg-[#111111] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-white transition hover:bg-[#9f6674]"
-                                                >
-                                                    Edit Item
-                                                </button>
+                                        {item.color && (
+                                            <span className="rounded-full border border-[#eadadd] bg-white px-3 py-1.5 text-[10px] font-medium text-[#705f64]">
+                                                {item.color}
+                                            </span>
+                                        )}
 
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        handleDelete(item)
-                                                    }
-                                                    className="rounded-full border border-[#e6cfd4] bg-white px-4 py-2.5 text-[10px] font-semibold text-[#b16c7b] transition hover:bg-[#f9e7ea] hover:text-[#8f4f5e]"
-                                                >
-                                                    Remove
-                                                </button>
+                                        {item.size && (
+                                            <span className="rounded-full border border-[#eadadd] bg-white px-3 py-1.5 text-[10px] font-medium text-[#705f64]">
+                                                Size {item.size}
+                                            </span>
+                                        )}
 
-                                            </div>
+                                        {item.season && (
+                                            <span className="rounded-full border border-[#eadadd] bg-white px-3 py-1.5 text-[10px] font-medium text-[#705f64]">
+                                                {item.season}
+                                            </span>
+                                        )}
 
-                                        </div>
-                                    </article>
-                                ))}
-                            </div>
+                                        {item.occasion && (
+                                            <span className="rounded-full border border-[#eadadd] bg-white px-3 py-1.5 text-[10px] font-medium text-[#705f64]">
+                                                {item.occasion}
+                                            </span>
+                                        )}
+
+                                    </div>
+
+
+                                    {/* ACTIONS */}
+                                    <div className="mt-5 flex items-center gap-2 border-t border-[#eee2e4] pt-4">
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleEdit(item)
+                                            }
+                                            className="flex-1 rounded-full bg-[#111111] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-white transition hover:bg-[#9f6674]"
+                                        >
+                                            Edit Item
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleDelete(item)
+                                            }
+                                            className="rounded-full border border-[#e6cfd4] bg-white px-4 py-2.5 text-[10px] font-semibold text-[#b16c7b] transition hover:bg-[#f9e7ea] hover:text-[#8f4f5e]"
+                                        >
+                                            Remove
+                                        </button>
+
+                                    </div>
+
+                                </div>
+                            </article>
+                        ))}
+                    </div>
                 )}
             </div>
         </div>

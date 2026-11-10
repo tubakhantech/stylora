@@ -68,6 +68,7 @@ export default function OnboardingStepTwoPage() {
     const [messageType, setMessageType] =
         useState<MessageType>(null);
 
+
     const handleSubmit = async (
         event: FormEvent<HTMLFormElement>
     ) => {
@@ -76,68 +77,107 @@ export default function OnboardingStepTwoPage() {
         setMessage("");
         setMessageType(null);
 
-        if (preferredStyles.length === 0) {
+        const validStyles = preferredStyles.every((value) =>
+            STYLE_OPTIONS.includes(value)
+        );
+
+        const validFavoriteColors = favoriteColors.every((value) =>
+            COLOR_OPTIONS.includes(value)
+        );
+
+        const validAvoidColors = avoidColors.every((value) =>
+            COLOR_OPTIONS.includes(value)
+        );
+
+        const validOccasions = commonOccasions.every((value) =>
+            OCCASION_OPTIONS.includes(value)
+        );
+
+        if (
+            preferredStyles.length === 0 ||
+            !validStyles
+        ) {
             setMessageType("error");
-            setMessage("Please select at least one preferred style.");
+            setMessage("Please select at least one valid preferred style.");
             return;
         }
 
-        if (favoriteColors.length === 0) {
+        if (
+            favoriteColors.length === 0 ||
+            !validFavoriteColors
+        ) {
             setMessageType("error");
-            setMessage("Please select at least one favorite color.");
+            setMessage("Please select at least one valid favorite color.");
             return;
         }
 
-        if (commonOccasions.length === 0) {
+        if (!validAvoidColors) {
             setMessageType("error");
-            setMessage("Please select at least one common occasion.");
+            setMessage("Please select valid colors to avoid.");
+            return;
+        }
+
+        if (
+            commonOccasions.length === 0 ||
+            !validOccasions
+        ) {
+            setMessageType("error");
+            setMessage("Please select at least one valid occasion.");
             return;
         }
 
         setIsSubmitting(true);
 
-        const supabase = createClient();
+        try {
+            const supabase = createClient();
 
-        const {
-            data: { user },
-        } = await supabase.auth.getUser();
+            const {
+                data: { user },
+                error: userError,
+            } = await supabase.auth.getUser();
 
-        if (!user) {
+            if (userError || !user) {
+                setMessageType("error");
+                setMessage("Your session has expired. Please log in again.");
+                return;
+            }
+
+            const { error } = await supabase
+                .from("profiles")
+                .update({
+                    preferred_styles: preferredStyles,
+                    favorite_colors: favoriteColors,
+                    avoid_colors: avoidColors,
+                    common_occasions: commonOccasions,
+                    onboarding_step: 3,
+                    onboarding_completed: false,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("id", user.id);
+
+            if (error) {
+                throw error;
+            }
+
+            setMessageType("success");
+            setMessage("Your style preferences have been saved successfully.");
+
+            setTimeout(() => {
+                router.push("/onboarding/step-3");
+                router.refresh();
+            }, 600);
+        } catch (error) {
+            console.error("Onboarding Step 2 error:", error);
+
+            setMessageType("error");
+            setMessage(
+                "Something went wrong while saving your preferences. Please try again."
+            );
+        } finally {
             setIsSubmitting(false);
-            setMessageType("error");
-            setMessage("Your session has expired. Please log in again.");
-            return;
         }
-
-        const { error } = await supabase
-            .from("profiles")
-            .update({
-                preferred_styles: preferredStyles,
-                favorite_colors: favoriteColors,
-                avoid_colors: avoidColors,
-                common_occasions: commonOccasions,
-                onboarding_step: 3,
-                onboarding_completed: false,
-                updated_at: new Date().toISOString(),
-            })
-            .eq("id", user.id);
-
-        setIsSubmitting(false);
-
-        if (error) {
-            setMessageType("error");
-            setMessage(error.message);
-            return;
-        }
-
-        setMessageType("success");
-        setMessage("Your style preferences have been saved successfully.");
-
-        setTimeout(() => {
-            router.push("/onboarding/step-3");
-            router.refresh();
-        }, 600);
     };
+
 
     const selectedStyle = {
         borderColor: "#22C55E",

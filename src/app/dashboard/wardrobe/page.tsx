@@ -1,3 +1,4 @@
+
 import Link from "next/link";
 
 import { createClient } from "@/utils/supabase/server";
@@ -9,11 +10,7 @@ const WARDROBE_CATEGORIES = [
         description: "Dresses, gowns and one-piece outfits",
         icon: "👗",
         image: "/wardrobe-categories/dress.png",
-        itemTypes: [
-            "Dress",
-            "Gown",
-            "One Piece",
-        ],
+        itemTypes: ["Dress", "Gown", "One Piece"],
     },
     {
         name: "Tops",
@@ -21,13 +18,7 @@ const WARDROBE_CATEGORIES = [
         description: "Tops, shirts, T-shirts and blouses",
         icon: "👚",
         image: "/wardrobe-categories/tops.png",
-        itemTypes: [
-            "Top",
-            "Shirt",
-            "T-Shirt",
-            "Blouse",
-            "Upper Wear",
-        ],
+        itemTypes: ["Top", "Shirt", "T-Shirt", "Blouse", "Upper Wear"],
     },
     {
         name: "Bottoms",
@@ -51,11 +42,7 @@ const WARDROBE_CATEGORIES = [
         description: "Jackets, blazers, coats and layers",
         icon: "🧥",
         image: "/wardrobe-categories/outerwear.png",
-        itemTypes: [
-            "Jacket",
-            "Blazer",
-            "Coat",
-        ],
+        itemTypes: ["Jacket", "Blazer", "Coat"],
     },
     {
         name: "Ethnic Wear",
@@ -63,9 +50,7 @@ const WARDROBE_CATEGORIES = [
         description: "Kurtas, suits, sarees and festive wear",
         icon: "🥻",
         image: "/wardrobe-categories/ethnic-wear.png",
-        itemTypes: [
-            "Ethnic Wear",
-        ],
+        itemTypes: ["Ethnic Wear"],
     },
     {
         name: "Footwear",
@@ -73,9 +58,7 @@ const WARDROBE_CATEGORIES = [
         description: "Heels, flats, sneakers, boots and sandals",
         icon: "👠",
         image: "/wardrobe-categories/footwear.png",
-        itemTypes: [
-            "Footwear",
-        ],
+        itemTypes: ["Footwear"],
     },
     {
         name: "Bags",
@@ -83,9 +66,7 @@ const WARDROBE_CATEGORIES = [
         description: "Handbags, clutches, totes and backpacks",
         icon: "👜",
         image: "/wardrobe-categories/bags.png",
-        itemTypes: [
-            "Bag",
-        ],
+        itemTypes: ["Bag"],
     },
     {
         name: "Jewellery",
@@ -95,14 +76,12 @@ const WARDROBE_CATEGORIES = [
         image: "/wardrobe-categories/jewellery.png",
         itemTypes: ["Jewellery"],
     },
-
     {
         name: "Dupattas & Scarves",
         slug: "dupattas-scarves",
         description: "Dupattas, hijabs, scarves, stoles, shawls and undercaps",
         icon: "🧕",
         image: "/wardrobe-categories/dupattas-scarves.png",
-
         itemTypes: [
             "Dupatta",
             "Hijab",
@@ -113,21 +92,15 @@ const WARDROBE_CATEGORIES = [
             "Hijab Cap",
         ],
     },
-
     {
         name: "Accessories",
         slug: "accessories",
         description: "Belts, caps, hats, sunglasses and more",
         icon: "🕶️",
         image: "/wardrobe-categories/accessories.png",
-        itemTypes: [
-            "Accessory",
-            "Cap",
-            "Hat",
-            "Other",
-        ],
+        itemTypes: ["Accessory", "Cap", "Hat", "Other"],
     },
-];;
+];
 
 export default async function WardrobePage() {
     const supabase = await createClient();
@@ -147,33 +120,29 @@ export default async function WardrobePage() {
         wardrobeItems = data ?? [];
     }
 
-    const getCategoryCount = (
-        itemTypes: string[]
-    ) => {
+    const getCategoryCount = (itemTypes: string[]) => {
         return wardrobeItems.filter((item) =>
-            item.category
-                ? itemTypes.includes(item.category)
-                : false
+            item.category ? itemTypes.includes(item.category) : false
         ).length;
     };
 
     return (
-        <div className="p-4 sm:p-6 lg:p-8">
+        <div className="min-h-full bg-[#fffafa] p-4 sm:p-6 lg:p-8 dark:bg-[#121112]">
             <div className="mx-auto max-w-[1200px]">
 
                 {/* WARDROBE EDITORIAL HERO */}
-                <section className="relative mb-8 overflow-hidden rounded-[32px] border border-[#eadfe1] bg-[#f8efec]">
+                <section className="relative mb-8 overflow-hidden rounded-[32px] border border-[#eadfe1] bg-[#f8efec] dark:border-[#3b3437] dark:bg-[#242124]">
 
                     <div className="grid min-h-[350px] lg:grid-cols-[0.9fr_1.1fr]">
 
                         {/* LEFT CONTENT */}
                         <div className="relative z-10 flex flex-col justify-center px-7 py-10 sm:px-10 lg:px-12">
 
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-[#6f6064]">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-[#6f6064] dark:text-[#c0b3b7]">
                                 Your Digital Closet
                             </p>
 
-                            <h1 className="mt-5 font-serif text-5xl leading-[0.95] tracking-[-0.05em] text-[#111111] sm:text-6xl">
+                            <h1 className="mt-5 font-serif text-5xl leading-[0.95] tracking-[-0.05em] text-[#111111] sm:text-6xl dark:text-[#f7f2f3]">
                                 Curate Today.
                                 <br />
 
@@ -183,7 +152,7 @@ export default async function WardrobePage() {
                                 Tomorrow.
                             </h1>
 
-                            <p className="mt-6 max-w-[480px] text-sm leading-6 text-[#655a5d]">
+                            <p className="mt-6 max-w-[480px] text-sm leading-6 text-[#655a5d] dark:text-[#c0b3b7]">
                                 Organize your wardrobe, explore your pieces and
                                 let Stylora create new looks from what you
                                 already own.
@@ -203,30 +172,29 @@ export default async function WardrobePage() {
                             <div className="mt-7 flex items-center gap-8">
 
                                 <div>
-                                    <p className="font-serif text-3xl text-[#111111]">
+                                    <p className="font-serif text-3xl text-[#111111] dark:text-[#f7f2f3]">
                                         {wardrobeItems.length}
                                     </p>
 
-                                    <p className="mt-1 text-xs text-[#74676a]">
+                                    <p className="mt-1 text-xs text-[#74676a] dark:text-[#b8aaae]">
                                         Total Pieces
                                     </p>
                                 </div>
 
-                                <div className="h-11 w-px bg-[#cfbfc2]" />
+                                <div className="h-11 w-px bg-[#cfbfc2] dark:bg-[#51454a]" />
 
                                 <div>
-                                    <p className="font-serif text-3xl text-[#111111]">
+                                    <p className="font-serif text-3xl text-[#111111] dark:text-[#f7f2f3]">
                                         {WARDROBE_CATEGORIES.length}
                                     </p>
 
-                                    <p className="mt-1 text-xs text-[#74676a]">
+                                    <p className="mt-1 text-xs text-[#74676a] dark:text-[#b8aaae]">
                                         Categories
                                     </p>
                                 </div>
 
                             </div>
                         </div>
-
 
                         {/* RIGHT VISUAL */}
                         <div className="relative hidden min-h-[350px] overflow-hidden lg:block">
@@ -264,95 +232,81 @@ export default async function WardrobePage() {
                                 Explore Your Closet
                             </p>
 
-                            <h2 className="mt-2 font-serif text-3xl tracking-[-0.03em] text-[#111111] sm:text-4xl">
+                            <h2 className="mt-2 font-serif text-3xl tracking-[-0.03em] text-[#111111] sm:text-4xl dark:text-[#f7f2f3]">
                                 Shop your own wardrobe.
                             </h2>
                         </div>
 
-                        <p className="hidden font-serif text-sm italic text-[#77696d] sm:block">
+                        <p className="hidden font-serif text-sm italic text-[#77696d] sm:block dark:text-[#b8aaae]">
                             Every piece has a story. Find yours.
                         </p>
                     </div>
 
-
                     {/* CATEGORY CARDS */}
                     <div className="grid gap-4 lg:grid-cols-2">
 
-                        {WARDROBE_CATEGORIES.map(
-                            (category, index) => {
-                                const itemCount =
-                                    getCategoryCount(
-                                        category.itemTypes
-                                    );
+                        {WARDROBE_CATEGORIES.map((category, index) => {
+                            const itemCount = getCategoryCount(category.itemTypes);
 
-                                const imageBackgrounds = [
-                                    "bg-[#ead2d2]",
-                                    "bg-[#eaded3]",
-                                    "bg-[#dedbd8]",
-                                    "bg-[#dfd1c6]",
-                                    "bg-[#e8d8cf]",
-                                    "bg-[#ead2ce]",
-                                    "bg-[#dfcec7]",
-                                    "bg-[#e8d8c9]",
-                                    "bg-[#d7d4ca]",
-                                    "bg-[#dfcfc1]",
-                                ];
+                            const imageBackgrounds = [
+                                "bg-[#ead2d2]",
+                                "bg-[#eaded3]",
+                                "bg-[#dedbd8]",
+                                "bg-[#dfd1c6]",
+                                "bg-[#e8d8cf]",
+                                "bg-[#ead2ce]",
+                                "bg-[#dfcec7]",
+                                "bg-[#e8d8c9]",
+                                "bg-[#d7d4ca]",
+                                "bg-[#dfcfc1]",
+                            ];
 
-                                return (
-                                    <Link
-                                        key={category.slug}
-                                        href={`/dashboard/wardrobe/${category.slug}`}
-                                        className="group grid min-h-[165px] grid-cols-[125px_1fr] overflow-hidden rounded-[26px] border border-[#eadfe1] bg-[#fcf8f7] transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(72,46,53,0.09)] sm:grid-cols-[155px_1fr]"
+                            return (
+                                <Link
+                                    key={category.slug}
+                                    href={`/dashboard/wardrobe/${category.slug}`}
+                                    className="group grid min-h-[165px] grid-cols-[125px_1fr] overflow-hidden rounded-[26px] border border-[#eadfe1] bg-[#fcf8f7] transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(72,46,53,0.09)] sm:grid-cols-[155px_1fr] dark:border-[#3b3437] dark:bg-[#1b191b] dark:hover:border-[#69505a]"
+                                >
+
+                                    {/* IMAGE AREA */}
+                                    <div
+                                        className={`relative flex items-center justify-center overflow-hidden ${imageBackgrounds[index % imageBackgrounds.length]}`}
                                     >
+                                        <div className="absolute inset-0 bg-gradient-to-br from-white/25 to-transparent" />
 
-                                        {/* IMAGE AREA */}
-                                        <div
-                                            className={`relative flex items-center justify-center overflow-hidden ${imageBackgrounds[
-                                                index %
-                                                imageBackgrounds.length
-                                                ]
-                                                }`}
-                                        >
-                                            <div className="absolute inset-0 bg-gradient-to-br from-white/25 to-transparent" />
+                                        <img
+                                            src={category.image}
+                                            alt={category.name}
+                                            className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                                        />
+                                    </div>
 
-                                            <img
-                                                src={category.image}
-                                                alt={category.name}
-                                                className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                                            />
-                                        </div>
+                                    {/* DETAILS */}
+                                    <div className="relative flex flex-col justify-center p-5 sm:p-6">
 
+                                        <h3 className="font-serif text-2xl text-[#111111] dark:text-[#f7f2f3]">
+                                            {category.name}
+                                        </h3>
 
-                                        {/* DETAILS */}
-                                        <div className="relative flex flex-col justify-center p-5 sm:p-6">
+                                        <p className="mt-1 text-sm font-medium text-[#8d6d75] dark:text-[#c18b9a]">
+                                            {itemCount}{" "}
+                                            {itemCount === 1 ? "piece" : "pieces"}
+                                        </p>
 
-                                            <h3 className="font-serif text-2xl text-[#111111]">
-                                                {category.name}
-                                            </h3>
+                                        <p className="mt-3 max-w-[300px] text-xs leading-5 text-[#817478] dark:text-[#b8aaae]">
+                                            {category.description}
+                                        </p>
 
-                                            <p className="mt-1 text-sm font-medium text-[#8d6d75]">
-                                                {itemCount}{" "}
-                                                {itemCount === 1
-                                                    ? "piece"
-                                                    : "pieces"}
-                                            </p>
+                                        {/* ARROW */}
+                                        <span className="absolute bottom-5 right-5 flex h-10 w-10 items-center justify-center rounded-full bg-[#111111] text-sm text-white transition duration-300 group-hover:translate-x-1 group-hover:bg-[#bd7b87]">
+                                            →
+                                        </span>
 
-                                            <p className="mt-3 max-w-[300px] text-xs leading-5 text-[#817478]">
-                                                {category.description}
-                                            </p>
+                                    </div>
 
-
-                                            {/* ARROW */}
-                                            <span className="absolute bottom-5 right-5 flex h-10 w-10 items-center justify-center rounded-full bg-[#111111] text-sm text-white transition duration-300 group-hover:bg-[#bd7b87] group-hover:translate-x-1">
-                                                →
-                                            </span>
-
-                                        </div>
-
-                                    </Link>
-                                );
-                            }
-                        )}
+                                </Link>
+                            );
+                        })}
 
                     </div>
                 </section>

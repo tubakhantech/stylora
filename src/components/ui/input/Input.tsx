@@ -27,10 +27,10 @@ export default function Input({
     className,
 }: InputProps) {
     const baseStyles =
-        "w-full rounded-lg border px-4 py-3 text-sm text-black placeholder:text-gray-400 outline-none transition-all duration-200";
-
+        "w-full rounded-lg border px-4 py-3 text-sm text-black dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 bg-white dark:bg-[#252525] outline-none transition-all duration-200";
+        
     const stateStyles = {
-        normal: "border-gray-300 focus:border-black",
+        normal: "border-gray-300 dark:border-[#444444] focus:border-black dark:focus:border-[#c88e9b]",
         error: "border-red-500 focus:border-red-500",
         disabled: "bg-gray-100 cursor-not-allowed opacity-60",
     };
@@ -38,7 +38,7 @@ export default function Input({
     return (
         <div className="flex flex-col gap-2">
             {label && (
-                <label className="text-sm font-medium text-black">
+                <label className="text-sm font-medium text-black dark:text-white">
                     {label}
                     {required && <span className="text-red-500"> *</span>}
                 </label>

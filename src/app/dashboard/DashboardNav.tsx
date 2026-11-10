@@ -261,7 +261,7 @@ export default function DashboardNav({
 
                                 </div>
 
-                                <h1 className="truncate font-serif text-xl text-[#111111] sm:mt-0.5 sm:text-2xl">
+                                <h1 className="truncate font-serif text-xl text-[#111111] dark:text-[#f7f2f3] sm:mt-0.5 sm:text-2xl">
                                     {pageTitle}
                                 </h1>
 
@@ -280,7 +280,7 @@ export default function DashboardNav({
                                     Welcome back
                                 </p>
 
-                                <p className="mt-1 max-w-[200px] truncate text-[15px] font-semibold text-[#111111]">
+                                <p className="mt-1 max-w-[200px] truncate text-[15px] font-semibold text-[#f7f2f3]">
                                     {displayName}
                                 </p>
 
@@ -356,7 +356,7 @@ export default function DashboardNav({
 
 
                     {/* MOBILE SIDEBAR */}
-                    <aside className="relative flex h-full w-[290px] max-w-[86vw] flex-col border-r border-[#eadfe1] bg-[#fffdfc] shadow-[12px_0_40px_rgba(58,38,44,0.12)]">
+                    <aside className="relative flex h-full w-[290px] max-w-[86vw] flex-col border-r border-[#eadfe1] bg-[#fffdfc] shadow-[12px_0_40px_rgba(58,38,44,0.12)] dark:border-[#332d30] dark:bg-[#191719] dark:shadow-none">
 
                         {/* BRAND */}
                         <div className="flex items-center justify-between px-5 pb-5 pt-6">
@@ -423,8 +423,8 @@ export default function DashboardNav({
                                             setMobileMenuOpen(false)
                                         }
                                         className={`group flex items-center gap-3 rounded-[16px] border px-4 py-3 text-sm transition-all ${active
-                                                ? "border-[#ead2d7] bg-[#f9e9ec] font-semibold text-[#8f5c69]"
-                                                : "border-transparent font-medium text-[#74686b] hover:bg-[#faf3f2]"
+                                                ? "border-[#ead2d7] bg-[#f9e9ec] font-semibold text-[#8f5c69] dark:border-[#5a4148] dark:bg-[#34272b] dark:text-[#e3b9c4]"
+                                            : "border-transparent font-medium text-[#74686b] hover:bg-[#faf3f2] dark:text-[#b9adb1] dark:hover:bg-[#262225] dark:hover:text-white"
                                             }`}
                                     >
                                         <span
@@ -454,7 +454,7 @@ export default function DashboardNav({
                                 onClick={() =>
                                     setMobileMenuOpen(false)
                                 }
-                                className="mb-3 flex items-center gap-3 rounded-[18px] border border-[#eadfe1] bg-[#fcf7f6] p-3"
+                                className="mb-3 flex items-center gap-3 rounded-[18px] border border-[#eadfe1] bg-[#fcf7f6] p-3 dark:border-[#3b3437] dark:bg-[#242124]"
                             >
 
                                 <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[#f5dfe3] ring-2 ring-white">
@@ -475,12 +475,12 @@ export default function DashboardNav({
 
                                 <div className="min-w-0 flex-1">
 
-                                    <p className="truncate text-xs font-semibold text-[#111111]">
+                                    <p className="truncate text-xs font-semibold text-[#f7f2f3]">
                                         {displayName}
                                     </p>
 
                                     {userEmail && (
-                                        <p className="mt-0.5 truncate text-[9px] text-[#9b898e]">
+                                        <p className="mt-0.5 truncate text-[9px] text-[#9b898e] dark:text-[#b8aaae]">
                                             {userEmail}
                                         </p>
                                     )}

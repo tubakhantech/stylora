@@ -1,22 +1,100 @@
 @import "tailwindcss";
+
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* LIGHT THEME */
 :root {
-  --background: #ffffff;
+  color-scheme: light;
+
+  --background: #fdf8f6;
   --foreground: #171717;
+
+  --surface: #ffffff;
+  --surface-secondary: #fcf8f7;
+
+  --border: #eadfe1;
+
+  --text-primary: #171717;
+  --text-secondary: #75676b;
+  --text-muted: #9a878c;
+
+  --accent: #b47787;
+  --accent-hover: #9f6674;
+
+  --input-background: #ffffff;
+}
+
+/* DARK THEME */
+.dark {
+  color-scheme: dark;
+
+  --background: #121112;
+  --foreground: #f7f2f3;
+
+  --surface: #1b191b;
+  --surface-secondary: #242124;
+
+  --border: #3b3437;
+
+  --text-primary: #f7f2f3;
+  --text-secondary: #c0b3b7;
+  --text-muted: #9c8d92;
+
+  --accent: #c18b9a;
+  --accent-hover: #d09baa;
+
+  --input-background: #242124;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-
+/* BASE */
+html {
+  background: var(--background);
+}
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease;
+}
+
+/* FORM ELEMENTS */
+input,
+textarea,
+select {
+  color: var(--text-primary);
+}
+
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: var(--input-background);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* SELECTION */
+::selection {
+  background: #e8c5ce;
+  color: #171717;
+}
+
+.dark ::selection {
+  background: #76515b;
+  color: #ffffff;
 }

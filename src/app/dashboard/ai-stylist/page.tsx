@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -86,39 +87,48 @@ interface AIRecommendation {
     why_it_works: string;
 }
 
+function isValidAIRecommendation(value: unknown): value is AIRecommendation {
+    if (!value || typeof value !== "object") return false;
+
+    const item = value as Record<string, unknown>;
+
+    return (
+        typeof item.title === "string" &&
+        item.title.trim().length > 0 &&
+        typeof item.summary === "string" &&
+        item.summary.trim().length > 0 &&
+        Array.isArray(item.selected_wardrobe_item_ids) &&
+        item.selected_wardrobe_item_ids.every((id) => typeof id === "string") &&
+        Array.isArray(item.styling_tips) &&
+        item.styling_tips.every((tip) => typeof tip === "string") &&
+        typeof item.color_notes === "string" &&
+        typeof item.modesty_notes === "string" &&
+        typeof item.weather_notes === "string" &&
+        Array.isArray(item.external_suggestions) &&
+        item.external_suggestions.every((entry) => typeof entry === "string") &&
+        typeof item.why_it_works === "string"
+    );
+}
+
 export default function AIStylistPage() {
-    const [occasion, setOccasion] =
-        useState("");
+    const [occasion, setOccasion] = useState("");
+    const [style, setStyle] = useState("");
+    const [weather, setWeather] = useState("");
+    const [request, setRequest] = useState("");
+    const [useWardrobe, setUseWardrobe] = useState(true);
 
-    const [style, setStyle] =
-        useState("");
-
-    const [weather, setWeather] =
-        useState("");
-
-    const [request, setRequest] =
-        useState("");
-
-    const [useWardrobe, setUseWardrobe] =
-        useState(true);
-
-    const [profile, setProfile] =
-        useState<ProfileData | null>(null);
+    const [profile, setProfile] = useState<ProfileData | null>(null);
 
     const [avatarBodyDisplayUrl, setAvatarBodyDisplayUrl] =
         useState<string | null>(null);
 
-    const [isGeneratingAvatar, setIsGeneratingAvatar] =
-        useState(false);
-
+    const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false);
     const [generatedAvatarUrl, setGeneratedAvatarUrl] =
         useState<string | null>(null);
 
-    const [avatarError, setAvatarError] =
-        useState("");
+    const [avatarError, setAvatarError] = useState("");
 
-    const [wardrobe, setWardrobe] =
-        useState<WardrobeItem[]>([]);
+    const [wardrobe, setWardrobe] = useState<WardrobeItem[]>([]);
 
     const [stylistSettings, setStylistSettings] =
         useState<StylistSettings>({
@@ -126,64 +136,60 @@ export default function AIStylistPage() {
             ai_allow_external_suggestions: true,
         });
 
-    const [isLoadingContext, setIsLoadingContext] =
-        useState(true);
-
-    const [message, setMessage] =
-        useState("");
+    const [isLoadingContext, setIsLoadingContext] = useState(true);
+    const [message, setMessage] = useState("");
 
     const [messageType, setMessageType] =
-        useState<
-            "success" | "error" | null
-        >(null);
+        useState<"success" | "error" | null>(null);
 
-    const [isGenerating, setIsGenerating] =
-        useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
 
     const [aiRecommendation, setAiRecommendation] =
         useState<AIRecommendation | null>(null);
 
-    const [aiError, setAiError] =
-        useState("");
-
-    const [isSavingLook, setIsSavingLook] =
-        useState(false);
-
-    const [lookSaved, setLookSaved] =
-        useState(false);
+    const [aiError, setAiError] = useState("");
+    const [isSavingLook, setIsSavingLook] = useState(false);
+    const [lookSaved, setLookSaved] = useState(false);
 
     useEffect(() => {
-        const savedRecommendation =
-            localStorage.getItem(
-                "stylora-ai-recommendation"
-            );
+        const savedRecommendation = localStorage.getItem(
+            "stylora-ai-recommendation"
+        );
 
-        const savedAvatar =
-            localStorage.getItem(
-                "stylora-generated-avatar"
-            );
+        const savedAvatar = localStorage.getItem(
+            "stylora-generated-avatar"
+        );
 
         if (savedRecommendation) {
             try {
-                const parsedRecommendation =
-                    JSON.parse(
-                        savedRecommendation
-                    );
+                const parsedRecommendation: unknown =
+                    JSON.parse(savedRecommendation);
 
-                setAiRecommendation(
-                    parsedRecommendation
-                );
+                if (isValidAIRecommendation(parsedRecommendation)) {
+                    setAiRecommendation(parsedRecommendation);
+                } else {
+                    localStorage.removeItem("stylora-ai-recommendation");
+                }
             } catch {
-                localStorage.removeItem(
-                    "stylora-ai-recommendation"
-                );
+                localStorage.removeItem("stylora-ai-recommendation");
             }
         }
 
         if (savedAvatar) {
-            setGeneratedAvatarUrl(
-                savedAvatar
-            );
+            try {
+                const parsedUrl = new URL(savedAvatar);
+
+                if (
+                    parsedUrl.protocol === "https:" ||
+                    parsedUrl.protocol === "http:"
+                ) {
+                    setGeneratedAvatarUrl(savedAvatar);
+                } else {
+                    localStorage.removeItem("stylora-generated-avatar");
+                }
+            } catch {
+                localStorage.removeItem("stylora-generated-avatar");
+            }
         }
     }, []);
 
@@ -201,26 +207,23 @@ export default function AIStylistPage() {
      * + AI SETTINGS
      */
     useEffect(() => {
-        const loadStylistContext =
-            async () => {
-                setIsLoadingContext(true);
+        let isMounted = true;
 
-                const supabase =
-                    createClient();
+        const loadStylistContext = async () => {
+            setIsLoadingContext(true);
+
+            try {
+                const supabase = createClient();
 
                 const {
                     data: { user },
-                } =
-                    await supabase.auth.getUser();
+                    error: authError,
+                } = await supabase.auth.getUser();
 
-                if (!user) {
-                    showMessage(
-                        "error",
+                if (authError || !user) {
+                    throw new Error(
                         "Your session has expired. Please log in again."
                     );
-
-                    setIsLoadingContext(false);
-                    return;
                 }
 
                 const [
@@ -263,17 +266,10 @@ export default function AIStylistPage() {
                             occasion,
                             image_url
                         `)
-                        .eq(
-                            "user_id",
-                            user.id
-                        )
-                        .order(
-                            "created_at",
-                            {
-                                ascending:
-                                    false,
-                            }
-                        ),
+                        .eq("user_id", user.id)
+                        .order("created_at", {
+                            ascending: false,
+                        }),
 
                     supabase
                         .from("user_settings")
@@ -281,56 +277,58 @@ export default function AIStylistPage() {
                             ai_wardrobe_first,
                             ai_allow_external_suggestions
                         `)
-                        .eq(
-                            "user_id",
-                            user.id
-                        )
+                        .eq("user_id", user.id)
                         .maybeSingle(),
                 ]);
 
                 if (profileResult.error) {
-                    showMessage(
-                        "error",
-                        profileResult.error.message
-                    );
-
-                    setIsLoadingContext(false);
-                    return;
+                    throw new Error(profileResult.error.message);
                 }
 
                 if (wardrobeResult.error) {
-                    showMessage(
-                        "error",
-                        wardrobeResult.error.message
-                    );
-
-                    setIsLoadingContext(false);
-                    return;
+                    throw new Error(wardrobeResult.error.message);
                 }
 
-                setProfile(
-                    profileResult.data ??
-                    null
-                );
+                if (settingsResult.error) {
+                    throw new Error(settingsResult.error.message);
+                }
 
-                if (profileResult.data?.avatar_body_url) {
-                    const { data: avatarSignedData } =
-                        await supabase.storage
-                            .from("profile-images")
-                            .createSignedUrl(
-                                profileResult.data.avatar_body_url,
-                                3600
-                            );
-
-                    setAvatarBodyDisplayUrl(
-                        avatarSignedData?.signedUrl ?? null
+                if (!profileResult.data) {
+                    throw new Error(
+                        "Your style profile could not be found. Please complete your profile first."
                     );
-                } else {
-                    setAvatarBodyDisplayUrl(null);
+                }
+
+                const loadedProfile = profileResult.data as ProfileData;
+                const loadedWardrobe = wardrobeResult.data ?? [];
+
+                const loadedSettings: StylistSettings = {
+                    ai_wardrobe_first:
+                        settingsResult.data?.ai_wardrobe_first ?? true,
+
+                    ai_allow_external_suggestions:
+                        settingsResult.data?.ai_allow_external_suggestions ?? true,
+                };
+
+                let avatarDisplayUrl: string | null = null;
+
+                if (loadedProfile.avatar_body_url) {
+                    const { data, error } = await supabase.storage
+                        .from("profile-images")
+                        .createSignedUrl(
+                            loadedProfile.avatar_body_url,
+                            3600
+                        );
+
+                    if (error) {
+                        console.error("Avatar URL error:", error);
+                    } else {
+                        avatarDisplayUrl = data?.signedUrl ?? null;
+                    }
                 }
 
                 const wardrobeWithImages = await Promise.all(
-                    (wardrobeResult.data ?? []).map(async (item) => {
+                    loadedWardrobe.map(async (item) => {
                         if (!item.image_url) {
                             return {
                                 ...item,
@@ -338,63 +336,69 @@ export default function AIStylistPage() {
                             };
                         }
 
-                        const { data: signedData } =
-                            await supabase.storage
-                                .from("wardrobe-images")
-                                .createSignedUrl(
-                                    item.image_url,
-                                    3600
-                                );
+                        const { data, error } = await supabase.storage
+                            .from("wardrobe-images")
+                            .createSignedUrl(
+                                item.image_url,
+                                3600
+                            );
+
+                        if (error) {
+                            console.error(
+                                "Wardrobe image URL error:",
+                                item.id,
+                                error
+                            );
+
+                            return {
+                                ...item,
+                                display_url: null,
+                            };
+                        }
 
                         return {
                             ...item,
-                            display_url:
-                                signedData?.signedUrl ?? null,
+                            display_url: data?.signedUrl ?? null,
                         };
                     })
                 );
 
+                if (!isMounted) return;
+
+                setProfile(loadedProfile);
                 setWardrobe(wardrobeWithImages);
+                setStylistSettings(loadedSettings);
+                setUseWardrobe(loadedSettings.ai_wardrobe_first);
+                setAvatarBodyDisplayUrl(avatarDisplayUrl);
 
-                if (settingsResult.data) {
-                    const loadedSettings = {
-                        ai_wardrobe_first:
-                            settingsResult
-                                .data
-                                .ai_wardrobe_first ??
-                            true,
+            } catch (error) {
+                console.error("Stylist context loading error:", error);
 
-                        ai_allow_external_suggestions:
-                            settingsResult
-                                .data
-                                .ai_allow_external_suggestions ??
-                            true,
-                    };
-
-                    setStylistSettings(
-                        loadedSettings
-                    );
-
-                    setUseWardrobe(
-                        loadedSettings
-                            .ai_wardrobe_first
+                if (isMounted) {
+                    showMessage(
+                        "error",
+                        error instanceof Error
+                            ? error.message
+                            : "Unable to load your styling information."
                     );
                 }
-
-                setIsLoadingContext(false);
-            };
+            } finally {
+                if (isMounted) {
+                    setIsLoadingContext(false);
+                }
+            }
+        };
 
         loadStylistContext();
+
+        return () => {
+            isMounted = false;
+        };
     }, []);
 
     /*
      * FORM SUBMIT
-     *
-     * For now this verifies that all
-     * information needed by the AI
-     * is ready.
      */
-
     const handleSubmit = async (
         event: FormEvent<HTMLFormElement>
     ) => {
@@ -406,10 +410,44 @@ export default function AIStylistPage() {
         setAiError("");
         setLookSaved(false);
 
-        if (!occasion) {
+        if (isLoadingContext) {
             showMessage(
                 "error",
-                "Please select an occasion."
+                "Please wait while your style profile is loading."
+            );
+            return;
+        }
+
+        if (!occasion || !OCCASIONS.includes(occasion)) {
+            showMessage(
+                "error",
+                "Please select a valid occasion."
+            );
+            return;
+        }
+
+        if (style && !STYLES.includes(style)) {
+            showMessage(
+                "error",
+                "Please select a valid style."
+            );
+            return;
+        }
+
+        if (weather && !WEATHER_OPTIONS.includes(weather)) {
+            showMessage(
+                "error",
+                "Please select a valid weather option."
+            );
+            return;
+        }
+
+        const cleanedRequest = request.trim();
+
+        if (cleanedRequest.length > 500) {
+            showMessage(
+                "error",
+                "Your personal note cannot exceed 500 characters."
             );
             return;
         }
@@ -417,19 +455,28 @@ export default function AIStylistPage() {
         if (!profile) {
             showMessage(
                 "error",
-                "Your style profile could not be loaded."
+                "Your style profile could not be loaded. Please complete your profile first."
             );
             return;
         }
 
-        if (
-            useWardrobe &&
-            wardrobe.length === 0
-        ) {
+        if (typeof useWardrobe !== "boolean") {
+            showMessage(
+                "error",
+                "Please select a valid outfit source."
+            );
+            return;
+        }
+
+        if (useWardrobe && wardrobe.length === 0) {
             showMessage(
                 "error",
                 "Your wardrobe is empty. Add some items first or turn off Use My Wardrobe."
             );
+            return;
+        }
+
+        if (isGenerating) {
             return;
         }
 
@@ -441,66 +488,90 @@ export default function AIStylistPage() {
                 {
                     method: "POST",
                     headers: {
-                        "Content-Type":
-                            "application/json",
+                        "Content-Type": "application/json",
                     },
-
                     body: JSON.stringify({
                         request: {
                             occasion,
-                            style:
-                                style ||
-                                "Stylora decides",
-                            weather:
-                                weather ||
-                                "Not specified",
-                            additional_request:
-                                request,
-                            use_wardrobe:
-                                useWardrobe,
+                            style: style || "Stylora decides",
+                            weather: weather || "Not specified",
+                            additional_request: cleanedRequest,
+                            use_wardrobe: useWardrobe,
                         },
-
                         profile,
-
-                        wardrobe:
-                            useWardrobe
-                                ? wardrobe
-                                : [],
-
-                        settings:
-                            stylistSettings,
+                        wardrobe: useWardrobe ? wardrobe : [],
+                        settings: stylistSettings,
                     }),
                 }
             );
 
-            const result =
-                await response.json();
+            const result = await response.json().catch(() => null);
 
-            if (
-                !response.ok ||
-                !result.success
-            ) {
+            if (!response.ok || !result?.success) {
                 throw new Error(
-                    result.error ||
-                    "Stylora could not generate your outfit."
+                    result?.error ||
+                    "Stylora could not generate your outfit. Please try again."
                 );
             }
 
-            setAiRecommendation(
-                result.recommendation
+            const recommendation = result.recommendation;
+
+            const isValidRecommendation =
+                recommendation &&
+                typeof recommendation.title === "string" &&
+                recommendation.title.trim().length > 0 &&
+                typeof recommendation.summary === "string" &&
+                recommendation.summary.trim().length > 0 &&
+                Array.isArray(recommendation.selected_wardrobe_item_ids) &&
+                recommendation.selected_wardrobe_item_ids.every(
+                    (id: unknown) => typeof id === "string"
+                ) &&
+                Array.isArray(recommendation.styling_tips) &&
+                recommendation.styling_tips.every(
+                    (tip: unknown) => typeof tip === "string"
+                ) &&
+                typeof recommendation.color_notes === "string" &&
+                typeof recommendation.modesty_notes === "string" &&
+                typeof recommendation.weather_notes === "string" &&
+                Array.isArray(recommendation.external_suggestions) &&
+                recommendation.external_suggestions.every(
+                    (item: unknown) => typeof item === "string"
+                ) &&
+                typeof recommendation.why_it_works === "string";
+
+            if (!isValidRecommendation) {
+                throw new Error(
+                    "The AI returned an incomplete recommendation. Please try again."
+                );
+            }
+
+            const availableWardrobeIds = new Set(
+                wardrobe.map((item) => item.id)
             );
+
+            const hasInvalidWardrobeIds =
+                recommendation.selected_wardrobe_item_ids.some(
+                    (id: string) => !availableWardrobeIds.has(id)
+                );
+
+            if (useWardrobe && hasInvalidWardrobeIds) {
+                throw new Error(
+                    "The AI returned an invalid wardrobe selection. Please try again."
+                );
+            }
+
+            setAiRecommendation(recommendation);
 
             localStorage.setItem(
                 "stylora-ai-recommendation",
-                JSON.stringify(
-                    result.recommendation
-                )
+                JSON.stringify(recommendation)
             );
 
             showMessage(
                 "success",
                 "Your outfit recommendation is ready."
             );
+
         } catch (error) {
             const errorMessage =
                 error instanceof Error
@@ -508,18 +579,22 @@ export default function AIStylistPage() {
                     : "Something went wrong while creating your outfit.";
 
             setAiError(errorMessage);
+            showMessage("error", errorMessage);
 
-            showMessage(
-                "error",
-                errorMessage
-            );
         } finally {
             setIsGenerating(false);
         }
     };
 
     const handleGenerateAvatar = async () => {
+        if (isGeneratingAvatar) return;
+
+        setAvatarError("");
+
         if (!aiRecommendation) {
+            setAvatarError(
+                "Please generate an outfit recommendation first."
+            );
             return;
         }
 
@@ -530,13 +605,23 @@ export default function AIStylistPage() {
             return;
         }
 
-        const wardrobeImageUrls =
-            selectedWardrobeItems
-                .map((item) => item.display_url)
-                .filter(
-                    (url): url is string =>
-                        Boolean(url)
-                );
+        if (
+            !Array.isArray(selectedWardrobeItems) ||
+            selectedWardrobeItems.length === 0
+        ) {
+            setAvatarError(
+                "No wardrobe items are available for this outfit."
+            );
+            return;
+        }
+
+        const wardrobeImageUrls = selectedWardrobeItems
+            .map((item) => item.display_url)
+            .filter(
+                (url): url is string =>
+                    typeof url === "string" &&
+                    url.trim().length > 0
+            );
 
         if (wardrobeImageUrls.length === 0) {
             setAvatarError(
@@ -545,23 +630,54 @@ export default function AIStylistPage() {
             return;
         }
 
+        const areValidImageUrls = wardrobeImageUrls.every((url) => {
+            try {
+                const parsedUrl = new URL(url);
+
+                return (
+                    parsedUrl.protocol === "https:" ||
+                    parsedUrl.protocol === "http:"
+                );
+            } catch {
+                return false;
+            }
+        });
+
+        if (!areValidImageUrls) {
+            setAvatarError(
+                "One or more wardrobe image URLs are invalid."
+            );
+            return;
+        }
+
         setIsGeneratingAvatar(true);
-        setAvatarError("");
-        setGeneratedAvatarUrl(null);
+
+        let supabase: ReturnType<typeof createClient> | null = null;
+        let uploadedFilePath: string | null = null;
 
         try {
+            supabase = createClient();
+
+            const {
+                data: { user },
+                error: authError,
+            } = await supabase.auth.getUser();
+
+            if (authError || !user) {
+                throw new Error(
+                    "Your session has expired. Please log in again."
+                );
+            }
+
             const response = await fetch(
                 "/api/ai-stylist/avatar",
                 {
                     method: "POST",
                     headers: {
-                        "Content-Type":
-                            "application/json",
+                        "Content-Type": "application/json",
                     },
                     body: JSON.stringify({
-                        avatarImageUrl:
-                            avatarBodyDisplayUrl,
-
+                        avatarImageUrl: avatarBodyDisplayUrl,
                         wardrobeImageUrls,
 
                         wardrobeItems: selectedWardrobeItems.map(
@@ -572,95 +688,160 @@ export default function AIStylistPage() {
                             })
                         ),
 
-                        recommendationTitle:
-                            aiRecommendation.title,
-
-                        recommendationSummary:
-                            aiRecommendation.summary,
-
-                        modestyNotes:
-                            aiRecommendation.modesty_notes,
+                        recommendationTitle: aiRecommendation.title,
+                        recommendationSummary: aiRecommendation.summary,
+                        modestyNotes: aiRecommendation.modesty_notes,
                     }),
                 }
             );
 
-            const result =
-                await response.json();
+            let result: {
+                success?: boolean;
+                error?: string;
+                image?: unknown;
+            };
 
-            if (
-                !response.ok ||
-                !result.success
-            ) {
+            try {
+                result = await response.json();
+            } catch {
+                throw new Error("The server returned an invalid response.");
+            }
+
+            if (!response.ok || !result.success) {
                 throw new Error(
                     result.error ||
                     "Stylora could not create your avatar preview."
                 );
             }
 
-            const generatedImage =
-                `data:image/png;base64,${result.image}`;
-
-            const supabase = createClient();
-
-            const {
-                data: { user },
-            } = await supabase.auth.getUser();
-
-            if (!user) {
+            if (
+                typeof result.image !== "string" ||
+                !result.image.trim()
+            ) {
                 throw new Error(
-                    "Your session has expired. Please log in again."
+                    "The generated avatar image is missing or invalid."
                 );
             }
 
-            const imageResponse =
-                await fetch(generatedImage);
+            const base64Image = result.image.replace(
+                /^data:image\/png;base64,/i,
+                ""
+            );
 
-            const imageBlob =
-                await imageResponse.blob();
+            if (
+                !/^[A-Za-z0-9+/]+={0,2}$/.test(base64Image) ||
+                base64Image.length % 4 !== 0
+            ) {
+                throw new Error(
+                    "The generated avatar image data is invalid."
+                );
+            }
 
-            const filePath =
+            const estimatedImageSize = Math.floor(
+                (base64Image.length * 3) / 4
+            );
+
+            if (estimatedImageSize > 10 * 1024 * 1024) {
+                throw new Error(
+                    "The generated avatar image is too large."
+                );
+            }
+
+            const generatedImage =
+                `data:image/png;base64,${base64Image}`;
+
+            const imageResponse = await fetch(generatedImage);
+
+            if (!imageResponse.ok) {
+                throw new Error(
+                    "Unable to process the generated avatar image."
+                );
+            }
+
+            const imageBlob = await imageResponse.blob();
+
+            if (imageBlob.size > 10 * 1024 * 1024) {
+                throw new Error(
+                    "The generated avatar image is too large."
+                );
+            }
+
+            if (
+                imageBlob.size === 0 ||
+                imageBlob.type !== "image/png"
+            ) {
+                throw new Error(
+                    "The generated avatar image format is invalid."
+                );
+            }
+
+            uploadedFilePath =
                 `${user.id}/current-${crypto.randomUUID()}.png`;
 
-            const { error: uploadError } =
-                await supabase.storage
-                    .from("saved-look-images")
-                    .upload(
-                        filePath,
-                        imageBlob,
-                        {
-                            contentType: "image/png",
-                            upsert: false,
-                        }
-                    );
+            const { error: uploadError } = await supabase.storage
+                .from("saved-look-images")
+                .upload(
+                    uploadedFilePath,
+                    imageBlob,
+                    {
+                        contentType: "image/png",
+                        upsert: false,
+                    }
+                );
 
             if (uploadError) {
+                throw new Error(uploadError.message);
+            }
+
+            const { data: publicUrlData } = supabase.storage
+                .from("saved-look-images")
+                .getPublicUrl(uploadedFilePath);
+
+            const generatedImageUrl = publicUrlData.publicUrl;
+
+            if (!generatedImageUrl) {
                 throw new Error(
-                    uploadError.message
+                    "Unable to create a URL for your generated avatar."
                 );
             }
 
-            const { data: publicUrlData } =
-                supabase.storage
-                    .from("saved-look-images")
-                    .getPublicUrl(filePath);
-
-            const generatedImageUrl =
-                publicUrlData.publicUrl;
-
-            setGeneratedAvatarUrl(
-                generatedImageUrl
-            );
+            setGeneratedAvatarUrl(generatedImageUrl);
 
             localStorage.setItem(
                 "stylora-generated-avatar",
                 generatedImageUrl
             );
+
+            setAvatarError("");
+
         } catch (error) {
+            console.error("Avatar generation error:", error);
+
+            if (supabase && uploadedFilePath) {
+                const { error: cleanupError } = await supabase.storage
+                    .from("saved-look-images")
+                    .remove([uploadedFilePath]);
+
+                if (cleanupError) {
+                    console.error(
+                        "Avatar cleanup error:",
+                        cleanupError
+                    );
+                }
+            }
+
+            setGeneratedAvatarUrl(null);
+
+            localStorage.removeItem(
+                "stylora-generated-avatar"
+            );
+
             setAvatarError(
                 error instanceof Error
                     ? error.message
                     : "Something went wrong while creating your avatar preview."
             );
+
         } finally {
             setIsGeneratingAvatar(false);
         }
@@ -680,13 +861,8 @@ export default function AIStylistPage() {
         setWeather("");
         setRequest("");
 
-        localStorage.removeItem(
-            "stylora-ai-recommendation"
-        );
-
-        localStorage.removeItem(
-            "stylora-generated-avatar"
-        );
+        localStorage.removeItem("stylora-ai-recommendation");
+        localStorage.removeItem("stylora-generated-avatar");
     };
 
     const uploadGeneratedAvatar = async (
@@ -698,117 +874,187 @@ export default function AIStylistPage() {
 
         const supabase = createClient();
 
-        const response = await fetch(
-            generatedAvatarUrl
-        );
-
-        const blob =
-            await response.blob();
+        const response = await fetch(generatedAvatarUrl);
+        const blob = await response.blob();
 
         const filePath =
             `${userId}/look-${crypto.randomUUID()}.png`;
 
-        const { error: uploadError } =
-            await supabase.storage
-                .from("saved-look-images")
-                .upload(
-                    filePath,
-                    blob,
-                    {
-                        contentType: "image/png",
-                        upsert: false,
-                    }
-                );
+        const { error: uploadError } = await supabase.storage
+            .from("saved-look-images")
+            .upload(
+                filePath,
+                blob,
+                {
+                    contentType: "image/png",
+                    upsert: false,
+                }
+            );
 
         if (uploadError) {
-            throw new Error(
-                uploadError.message
-            );
+            throw new Error(uploadError.message);
         }
 
-        const {
-            data: publicUrlData,
-        } = supabase.storage
+        const { data: publicUrlData } = supabase.storage
             .from("saved-look-images")
             .getPublicUrl(filePath);
 
         return publicUrlData.publicUrl;
     };
 
-    const handleSaveLook = async () => {
-        if (!aiRecommendation) {
+    async function handleSaveLook() {
+        if (isSavingLook || lookSaved) return;
+
+        const recommendation = aiRecommendation;
+
+        if (!recommendation) {
+            showMessage("error", "Please generate a look first.");
+            return;
+        }
+
+        const title = recommendation.title?.trim();
+        const summary = recommendation.summary?.trim();
+
+        if (!title || !summary) {
+            showMessage(
+                "error",
+                "The recommendation is incomplete. Please generate it again."
+            );
+            return;
+        }
+
+        if (
+            !Array.isArray(recommendation.selected_wardrobe_item_ids) ||
+            !Array.isArray(recommendation.styling_tips) ||
+            !Array.isArray(recommendation.external_suggestions)
+        ) {
+            showMessage(
+                "error",
+                "The recommendation data is invalid. Please generate it again."
+            );
+            return;
+        }
+
+        const selectedIds = recommendation.selected_wardrobe_item_ids;
+
+        const validWardrobeIds = new Set(
+            wardrobe.map((item) => item.id)
+        );
+
+        if (
+            selectedIds.some(
+                (id) =>
+                    typeof id !== "string" ||
+                    !validWardrobeIds.has(id)
+            )
+        ) {
+            showMessage(
+                "error",
+                "The recommendation contains invalid wardrobe items."
+            );
+            return;
+        }
+
+        if (
+            recommendation.styling_tips.some(
+                (tip) => typeof tip !== "string" || !tip.trim()
+            ) ||
+            recommendation.external_suggestions.some(
+                (item) => typeof item !== "string" || !item.trim()
+            )
+        ) {
+            showMessage(
+                "error",
+                "The recommendation contains invalid details."
+            );
+            return;
+        }
+
+        if (generatedAvatarUrl) {
+            try {
+                const avatarUrl = new URL(generatedAvatarUrl);
+
+                if (!["http:", "https:"].includes(avatarUrl.protocol)) {
+                    showMessage(
+                        "error",
+                        "The generated image URL is invalid."
+                    );
+                    return;
+                }
+            } catch {
+                showMessage(
+                    "error",
+                    "The generated image URL is invalid."
+                );
+                return;
+            }
+        }
+
+        if (occasion && !OCCASIONS.includes(occasion)) {
+            showMessage("error", "The selected occasion is invalid.");
+            return;
+        }
+
+        if (style && !STYLES.includes(style)) {
+            showMessage("error", "The selected style is invalid.");
             return;
         }
 
         setIsSavingLook(true);
-        setLookSaved(false);
 
-        const supabase = createClient();
+        try {
+            const supabase = createClient();
 
-        const {
-            data: { user },
-        } = await supabase.auth.getUser();
+            const {
+                data: { user },
+                error: authError,
+            } = await supabase.auth.getUser();
 
-        if (!user) {
+            if (authError || !user) {
+                showMessage(
+                    "error",
+                    "Please log in again to save this look."
+                );
+                return;
+            }
+
+            const { error } = await supabase
+                .from("saved_looks")
+                .insert({
+                    user_id: user.id,
+                    title,
+                    occasion,
+                    style,
+                    image_url: generatedAvatarUrl ?? null,
+                    wardrobe_item_ids: selectedIds,
+                    notes: summary,
+                });
+
+            if (error) {
+                console.error("Save look error:", error);
+
+                showMessage(
+                    "error",
+                    "Unable to save this look. Please try again."
+                );
+                return;
+            }
+
+            setLookSaved(true);
+            showMessage("success", "Look saved successfully!");
+
+        } catch (error) {
+            console.error("Unexpected save look error:", error);
+
+            showMessage(
+                "error",
+                "Something went wrong while saving your look."
+            );
+
+        } finally {
             setIsSavingLook(false);
-
-            showMessage(
-                "error",
-                "Your session has expired. Please log in again."
-            );
-
-            return;
         }
-
-        const savedAvatarUrl =
-            generatedAvatarUrl ?? null;
-
-
-        const notes = [
-            aiRecommendation.summary,
-            "",
-            "Styling Tips:",
-            ...aiRecommendation.styling_tips.map(
-                (tip) => `• ${tip}`
-            ),
-            "",
-            `Color Notes: ${aiRecommendation.color_notes}`,
-            `Weather: ${aiRecommendation.weather_notes}`,
-            `Modesty: ${aiRecommendation.modesty_notes}`,
-            `Why It Works: ${aiRecommendation.why_it_works}`,
-        ].join("\n");
-
-        const { error } = await supabase
-            .from("saved_looks")
-            .insert({
-                user_id: user.id,
-                title: aiRecommendation.title,
-                occasion: occasion || null,
-                notes,
-                image_url: savedAvatarUrl,
-                wardrobe_item_ids:
-                    aiRecommendation.selected_wardrobe_item_ids,
-                is_favorite: false,
-            });
-
-        setIsSavingLook(false);
-
-        if (error) {
-            showMessage(
-                "error",
-                error.message
-            );
-
-            return;
-        }
-
-        setLookSaved(true);
-
-        showMessage(
-            "success",
-            "Look saved successfully."
-        );
-    };
+    }
 
     const selectedWardrobeItems =
         aiRecommendation
@@ -820,160 +1066,136 @@ export default function AIStylistPage() {
             : [];
 
     return (
-        <div className="min-h-screen bg-[#fdf8f6] p-4 sm:p-6 lg:p-8">
+        <div className="min-h-screen bg-[#fdf8f6] p-4 text-[#171717] transition-colors duration-300 dark:bg-[#121112] dark:text-[#f7f2f3] sm:p-6 lg:p-8">
             <div className="mx-auto max-w-[1200px]">
 
-                {/* HEADER */}
-
                 {/* AI STYLIST HERO */}
-                <section className="relative mb-7 overflow-hidden rounded-[30px] border border-[#eadfe1] bg-gradient-to-br from-[#f7e5e7] via-[#fcf5f3] to-[#f5dedf] px-6 py-8 sm:px-9 sm:py-10">
+                <section className="relative mb-7 overflow-hidden rounded-[30px] border border-[#eadfe1] bg-gradient-to-br from-[#f7e5e7] via-[#fcf5f3] to-[#f5dedf] px-6 py-8 transition-colors duration-300 dark:border-[#49373d] dark:from-[#302328] dark:via-[#282124] dark:to-[#34252b] sm:px-9 sm:py-10">
 
-                    {/* DECOR */}
-                    <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-white/60 blur-3xl" />
-                    <div className="pointer-events-none absolute -bottom-28 left-[35%] h-56 w-56 rounded-full bg-[#efcfd5]/45 blur-3xl" />
+                    <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-white/60 blur-3xl dark:bg-[#c18b9a]/10" />
+                    <div className="pointer-events-none absolute -bottom-28 left-[35%] h-56 w-56 rounded-full bg-[#efcfd5]/45 blur-3xl dark:bg-[#c18b9a]/10" />
 
                     <div className="relative grid gap-8 md:grid-cols-[1fr_300px] md:items-center">
 
-                        {/* LEFT */}
                         <div>
-
-                            <div className="inline-flex items-center gap-2 rounded-full border border-[#e6cfd4] bg-white/65 px-4 py-2">
-                                <span className="text-[#a87582]">
+                            <div className="inline-flex items-center gap-2 rounded-full border border-[#e6cfd4] bg-white/65 px-4 py-2 dark:border-[#59414a] dark:bg-[#211c1e]/75">
+                                <span className="text-[#a87582] dark:text-[#d09baa]">
                                     ✦
                                 </span>
 
-                                <span className="text-[9px] font-semibold uppercase tracking-[0.25em] text-[#9c6976]">
+                                <span className="text-[9px] font-semibold uppercase tracking-[0.25em] text-[#9c6976] dark:text-[#d09baa]">
                                     Your Personal AI Stylist
                                 </span>
                             </div>
 
-                            <h1 className="mt-5 max-w-[650px] font-serif text-4xl leading-[1.02] tracking-[-0.045em] text-[#111111] sm:text-5xl lg:text-[58px]">
+                            <h1 className="mt-5 max-w-[650px] font-serif text-4xl leading-[1.02] tracking-[-0.045em] text-[#111111] dark:text-[#f7f2f3] sm:text-5xl lg:text-[58px]">
                                 Your wardrobe.
                                 <br />
-                                <span className="italic text-[#a87582]">
+                                <span className="italic text-[#a87582] dark:text-[#d09baa]">
                                     Styled intelligently.
                                 </span>
                             </h1>
 
-                            <p className="mt-5 max-w-[570px] text-sm leading-6 text-[#74666a] sm:text-[15px]">
+                            <p className="mt-5 max-w-[570px] text-sm leading-6 text-[#74666a] dark:text-[#c0b3b7] sm:text-[15px]">
                                 Tell Stylora where you&apos;re going and how you want
                                 to feel. Your AI stylist will create a personalized
                                 look using your profile and the pieces you already own.
                             </p>
 
                             <div className="mt-6 flex flex-wrap gap-2">
-
-                                <span className="rounded-full border border-[#e5d3d7] bg-white/70 px-4 py-2 text-[10px] font-medium text-[#725f64]">
+                                <span className="rounded-full border border-[#e5d3d7] bg-white/70 px-4 py-2 text-[10px] font-medium text-[#725f64] dark:border-[#59414a] dark:bg-[#211c1e]/70 dark:text-[#d4c2c7]">
                                     ✦ Personalized
                                 </span>
 
-                                <span className="rounded-full border border-[#e5d3d7] bg-white/70 px-4 py-2 text-[10px] font-medium text-[#725f64]">
+                                <span className="rounded-full border border-[#e5d3d7] bg-white/70 px-4 py-2 text-[10px] font-medium text-[#725f64] dark:border-[#59414a] dark:bg-[#211c1e]/70 dark:text-[#d4c2c7]">
                                     ♡ Wardrobe First
                                 </span>
 
-                                <span className="rounded-full border border-[#e5d3d7] bg-white/70 px-4 py-2 text-[10px] font-medium text-[#725f64]">
+                                <span className="rounded-full border border-[#e5d3d7] bg-white/70 px-4 py-2 text-[10px] font-medium text-[#725f64] dark:border-[#59414a] dark:bg-[#211c1e]/70 dark:text-[#d4c2c7]">
                                     ✧ Virtual Try-On
                                 </span>
-
                             </div>
-
                         </div>
-
 
                         {/* RIGHT EDITORIAL CARD */}
                         <div className="hidden md:block">
+                            <div className="relative overflow-hidden rounded-[26px] border border-white/70 bg-white/55 p-6 shadow-[0_18px_50px_rgba(100,64,73,0.08)] backdrop-blur-sm dark:border-[#59414a] dark:bg-[#1b191b]/75 dark:shadow-none">
 
-                            <div className="relative overflow-hidden rounded-[26px] border border-white/70 bg-white/55 p-6 shadow-[0_18px_50px_rgba(100,64,73,0.08)] backdrop-blur-sm">
-
-                                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#111111] text-lg text-white">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#111111] text-lg text-white dark:bg-[#c18b9a] dark:text-[#171214]">
                                     ✦
                                 </div>
 
-                                <p className="mt-7 font-serif text-2xl leading-tight text-[#111111]">
+                                <p className="mt-7 font-serif text-2xl leading-tight text-[#111111] dark:text-[#f7f2f3]">
                                     Dress for the
                                     <br />
-                                    <span className="italic text-[#a87582]">
+                                    <span className="italic text-[#a87582] dark:text-[#d09baa]">
                                         moment.
                                     </span>
                                 </p>
 
-                                <p className="mt-3 text-xs leading-5 text-[#806e73]">
+                                <p className="mt-3 text-xs leading-5 text-[#806e73] dark:text-[#c0b3b7]">
                                     Occasion, weather, personal style and your own
                                     wardrobe — brought together in one look.
                                 </p>
 
-                                <div className="mt-6 border-t border-[#e8dadd] pt-4">
-                                    <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#aa7b86]">
+                                <div className="mt-6 border-t border-[#e8dadd] pt-4 dark:border-[#49373d]">
+                                    <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#aa7b86] dark:text-[#d09baa]">
                                         Powered by Stylora AI
                                     </p>
                                 </div>
-
                             </div>
-
                         </div>
-
                     </div>
                 </section>
 
-
-                {/* PREMIUM STYLING CONTEXT */}
-                <section className="mb-7 overflow-hidden rounded-[26px] border border-[#eadfe1] bg-white/75 shadow-[0_12px_35px_rgba(91,58,67,0.05)]">
+                {/* STYLING CONTEXT */}
+                <section className="mb-7 overflow-hidden rounded-[26px] border border-[#eadfe1] bg-white/75 shadow-[0_12px_35px_rgba(91,58,67,0.05)] transition-colors duration-300 dark:border-[#3b3437] dark:bg-[#1b191b] dark:shadow-none">
 
                     <div className="grid lg:grid-cols-[1fr_auto]">
-
-                        {/* LEFT */}
                         <div className="px-5 py-5 sm:px-6">
-
                             <div className="flex items-start gap-4">
-
-                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f8e5e8] text-lg text-[#a87582]">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f8e5e8] text-lg text-[#a87582] dark:bg-[#3b292f] dark:text-[#d09baa]">
                                     ✦
                                 </div>
 
                                 <div>
-                                    <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-[#b47787]">
+                                    <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-[#b47787] dark:text-[#d09baa]">
                                         Styling Intelligence
                                     </p>
 
-                                    <h2 className="mt-1 font-serif text-xl text-[#111111]">
+                                    <h2 className="mt-1 font-serif text-xl text-[#111111] dark:text-[#f7f2f3]">
                                         Your Styling Context
                                     </h2>
 
-                                    <p className="mt-1 text-xs leading-5 text-[#8c7a7f]">
+                                    <p className="mt-1 text-xs leading-5 text-[#8c7a7f] dark:text-[#b8aaae]">
                                         Stylora combines your profile, wardrobe and avatar
                                         to personalize every recommendation.
                                     </p>
                                 </div>
-
                             </div>
-
                         </div>
 
-
                         {/* STATUS AREA */}
-                        <div className="border-t border-[#eadfe1] bg-[#fcf7f6] px-5 py-5 lg:border-l lg:border-t-0 lg:px-6">
+                        <div className="border-t border-[#eadfe1] bg-[#fcf7f6] px-5 py-5 transition-colors dark:border-[#3b3437] dark:bg-[#242124] lg:border-l lg:border-t-0 lg:px-6">
 
                             {isLoadingContext ? (
                                 <div className="flex items-center gap-3">
-
-                                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#a87582]">
+                                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#a87582] dark:bg-[#34272d] dark:text-[#d09baa]">
                                         ✦
                                     </span>
 
                                     <div>
-                                        <p className="text-xs font-semibold text-[#5f5054]">
+                                        <p className="text-xs font-semibold text-[#5f5054] dark:text-[#e7dce0]">
                                             Preparing your style...
                                         </p>
 
-                                        <p className="mt-0.5 text-[10px] text-[#9b898e]">
+                                        <p className="mt-0.5 text-[10px] text-[#9b898e] dark:text-[#b8aaae]">
                                             Loading your personal context
                                         </p>
                                     </div>
-
                                 </div>
                             ) : (
                                 <div className="flex flex-wrap gap-2">
-
                                     <StatusTag
                                         label={
                                             profile
@@ -997,43 +1219,21 @@ export default function AIStylistPage() {
                                                 ? "Avatar Ready"
                                                 : "Avatar Missing"
                                         }
-                                        ready={Boolean(
-                                            avatarBodyDisplayUrl
-                                        )}
+                                        ready={Boolean(avatarBodyDisplayUrl)}
                                     />
-
                                 </div>
                             )}
-
                         </div>
-
                     </div>
                 </section>
 
                 {/* MESSAGE */}
-
                 {message && (
                     <div
-                        className="mb-6 rounded-xl border px-4 py-3 text-sm"
-                        style={{
-                            backgroundColor:
-                                messageType ===
-                                    "success"
-                                    ? "#F0FDF4"
-                                    : "#FEF2F2",
-
-                            borderColor:
-                                messageType ===
-                                    "success"
-                                    ? "#86EFAC"
-                                    : "#FCA5A5",
-
-                            color:
-                                messageType ===
-                                    "success"
-                                    ? "#15803D"
-                                    : "#DC2626",
-                        }}
+                        className={`mb-6 rounded-xl border px-4 py-3 text-sm ${messageType === "success"
+                                ? "border-green-300 bg-green-50 text-green-700 dark:border-green-900 dark:bg-[#17271d] dark:text-[#9bd4aa]"
+                                : "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-[#2c191b] dark:text-[#f0a4aa]"
+                            }`}
                         role="status"
                     >
                         {message}
@@ -1041,246 +1241,163 @@ export default function AIStylistPage() {
                 )}
 
                 {/* FORM */}
-
                 <form
                     onSubmit={handleSubmit}
-                    className="relative overflow-hidden rounded-[30px] border border-[#eadfe1] bg-gradient-to-br from-white via-[#fffafa] to-[#f9eeec] p-6 shadow-[0_16px_45px_rgba(91,58,67,0.05)] sm:p-8"
+                    className="relative overflow-hidden rounded-[30px] border border-[#eadfe1] bg-gradient-to-br from-white via-[#fffafa] to-[#f9eeec] p-6 shadow-[0_16px_45px_rgba(91,58,67,0.05)] transition-colors duration-300 dark:border-[#3b3437] dark:from-[#1b191b] dark:via-[#1d1a1c] dark:to-[#292125] dark:shadow-none sm:p-8"
                 >
-                    {/* SOFT DECOR */}
-                    <div className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-[#f5dce1]/45 blur-3xl" />
+                    <div className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-[#f5dce1]/45 blur-3xl dark:bg-[#c18b9a]/10" />
 
                     {/* FORM HEADER */}
-                    <div className="relative mb-7 border-b border-[#eadde0] pb-6">
-
+                    <div className="relative mb-7 border-b border-[#eadde0] pb-6 dark:border-[#3b3437]">
                         <div className="flex items-start gap-4">
-
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#111111] text-lg text-white">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#111111] text-lg text-white dark:bg-[#c18b9a] dark:text-[#171214]">
                                 ✦
                             </div>
 
                             <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-[0.26em] text-[#b47787]">
+                                <p className="text-[9px] font-semibold uppercase tracking-[0.26em] text-[#b47787] dark:text-[#d09baa]">
                                     Stylist Consultation
                                 </p>
 
-                                <h3 className="mt-1 font-serif text-3xl tracking-[-0.035em] text-[#111111]">
+                                <h3 className="mt-1 font-serif text-3xl tracking-[-0.035em] text-[#111111] dark:text-[#f7f2f3]">
                                     What are you dressing for?
                                 </h3>
 
-                                <p className="mt-2 max-w-[560px] text-sm leading-6 text-[#806f73]">
+                                <p className="mt-2 max-w-[560px] text-sm leading-6 text-[#806f73] dark:text-[#c0b3b7]">
                                     Give Stylora a little context. We&apos;ll combine it
                                     with your personal style and wardrobe to build your look.
                                 </p>
                             </div>
-
                         </div>
-
                     </div>
 
                     <div className="grid gap-6 sm:grid-cols-2">
 
                         {/* OCCASION */}
-
                         <div>
-                            
-                            <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#765f65]">
+                            <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#765f65] dark:text-[#d0bdc3]">
                                 Occasion *
                             </label>
 
                             <select
-                                value={
-                                    occasion
+                                value={occasion}
+                                onChange={(event) =>
+                                    setOccasion(event.target.value)
                                 }
-                                onChange={(
-                                    event
-                                ) =>
-                                    setOccasion(
-                                        event
-                                            .target
-                                            .value
-                                    )
-                                }
-                                className="w-full cursor-pointer rounded-[16px] border border-[#e5d6da] bg-white/80 px-4 py-3.5 text-sm text-[#4f4548] outline-none transition focus:border-[#c88e9b] focus:ring-2 focus:ring-[#f4dfe3]"
+                                className="w-full cursor-pointer rounded-[16px] border border-[#e5d6da] bg-white/80 px-4 py-3.5 text-sm text-[#4f4548] outline-none transition focus:border-[#c88e9b] focus:ring-2 focus:ring-[#f4dfe3] dark:border-[#494044] dark:bg-[#242124] dark:text-[#f0e8eb] dark:focus:border-[#c18b9a] dark:focus:ring-[#76515b]/40"
                                 required
                             >
-                                <option value="">
-                                    Select occasion
-                                </option>
+                                <option value="">Select occasion</option>
 
-                                {OCCASIONS.map(
-                                    (item) => (
-                                        <option
-                                            key={
-                                                item
-                                            }
-                                            value={
-                                                item
-                                            }
-                                        >
-                                            {
-                                                item
-                                            }
-                                        </option>
-                                    )
-                                )}
+                                {OCCASIONS.map((item) => (
+                                    <option key={item} value={item}>
+                                        {item}
+                                    </option>
+                                ))}
                             </select>
                         </div>
 
                         {/* STYLE */}
-
                         <div>
-                            <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#765f65]">
+                            <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#765f65] dark:text-[#d0bdc3]">
                                 Style / Vibe
                             </label>
 
                             <select
                                 value={style}
-                                onChange={(
-                                    event
-                                ) =>
-                                    setStyle(
-                                        event
-                                            .target
-                                            .value
-                                    )
+                                onChange={(event) =>
+                                    setStyle(event.target.value)
                                 }
-                                className="w-full cursor-pointer rounded-[16px] border border-[#e5d6da] bg-white/80 px-4 py-3.5 text-sm text-[#4f4548] outline-none transition focus:border-[#c88e9b] focus:ring-2 focus:ring-[#f4dfe3]"
+                                className="w-full cursor-pointer rounded-[16px] border border-[#e5d6da] bg-white/80 px-4 py-3.5 text-sm text-[#4f4548] outline-none transition focus:border-[#c88e9b] focus:ring-2 focus:ring-[#f4dfe3] dark:border-[#494044] dark:bg-[#242124] dark:text-[#f0e8eb] dark:focus:border-[#c18b9a] dark:focus:ring-[#76515b]/40"
                             >
-                                <option value="">
-                                    Let Stylora decide
-                                </option>
+                                <option value="">Let Stylora decide</option>
 
-                                {STYLES.map(
-                                    (item) => (
-                                        <option
-                                            key={
-                                                item
-                                            }
-                                            value={
-                                                item
-                                            }
-                                        >
-                                            {
-                                                item
-                                            }
-                                        </option>
-                                    )
-                                )}
+                                {STYLES.map((item) => (
+                                    <option key={item} value={item}>
+                                        {item}
+                                    </option>
+                                ))}
                             </select>
                         </div>
 
                         {/* WEATHER */}
-
                         <div>
-                            <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#765f65]">
+                            <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#765f65] dark:text-[#d0bdc3]">
                                 Weather
                             </label>
 
                             <select
-                                value={
-                                    weather
+                                value={weather}
+                                onChange={(event) =>
+                                    setWeather(event.target.value)
                                 }
-                                onChange={(
-                                    event
-                                ) =>
-                                    setWeather(
-                                        event
-                                            .target
-                                            .value
-                                    )
-                                }
-                                className="w-full cursor-pointer rounded-[16px] border border-[#e5d6da] bg-white/80 px-4 py-3.5 text-sm text-[#4f4548] outline-none transition focus:border-[#c88e9b] focus:ring-2 focus:ring-[#f4dfe3]"
+                                className="w-full cursor-pointer rounded-[16px] border border-[#e5d6da] bg-white/80 px-4 py-3.5 text-sm text-[#4f4548] outline-none transition focus:border-[#c88e9b] focus:ring-2 focus:ring-[#f4dfe3] dark:border-[#494044] dark:bg-[#242124] dark:text-[#f0e8eb] dark:focus:border-[#c18b9a] dark:focus:ring-[#76515b]/40"
                             >
-                                <option value="">
-                                    Not specified
-                                </option>
+                                <option value="">Not specified</option>
 
-                                {WEATHER_OPTIONS.map(
-                                    (item) => (
-                                        <option
-                                            key={
-                                                item
-                                            }
-                                            value={
-                                                item
-                                            }
-                                        >
-                                            {
-                                                item
-                                            }
-                                        </option>
-                                    )
-                                )}
+                                {WEATHER_OPTIONS.map((item) => (
+                                    <option key={item} value={item}>
+                                        {item}
+                                    </option>
+                                ))}
                             </select>
                         </div>
 
                         {/* OUTFIT SOURCE */}
                         <div>
-                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#765f65]">
+                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#765f65] dark:text-[#d0bdc3]">
                                 Outfit Source
                             </p>
 
                             <button
                                 type="button"
-                                disabled={
-                                    isLoadingContext ||
-                                    isGenerating
-                                }
+                                disabled={isLoadingContext || isGenerating}
                                 onClick={() =>
-                                    setUseWardrobe(
-                                        (current) => !current
-                                    )
+                                    setUseWardrobe((current) => !current)
                                 }
                                 className={`group w-full rounded-[18px] border p-4 text-left transition ${useWardrobe
-                                        ? "border-[#d7e2d3] bg-[#f0f6ed]"
-                                        : "border-[#e5d6da] bg-white/80"
+                                        ? "border-[#d7e2d3] bg-[#f0f6ed] dark:border-[#49614a] dark:bg-[#1d2b20]"
+                                        : "border-[#e5d6da] bg-white/80 dark:border-[#494044] dark:bg-[#242124]"
                                     }`}
                             >
                                 <div className="flex items-center justify-between gap-4">
-
                                     <div className="flex items-center gap-3">
-
                                         <div
                                             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base ${useWardrobe
-                                                    ? "bg-white text-[#6f8867]"
-                                                    : "bg-[#f8edef] text-[#a87582]"
+                                                    ? "bg-white text-[#6f8867] dark:bg-[#2c3c2e] dark:text-[#a9c49f]"
+                                                    : "bg-[#f8edef] text-[#a87582] dark:bg-[#3b292f] dark:text-[#d09baa]"
                                                 }`}
                                         >
                                             ♡
                                         </div>
 
                                         <div>
-                                            <p className="text-sm font-semibold text-[#111111]">
+                                            <p className="text-sm font-semibold text-[#111111] dark:text-[#f7f2f3]">
                                                 Use My Wardrobe
                                             </p>
 
-                                            <p className="mt-0.5 text-[10px] text-[#8f7d82]">
+                                            <p className="mt-0.5 text-[10px] text-[#8f7d82] dark:text-[#b8aaae]">
                                                 Style pieces you already own
                                             </p>
                                         </div>
-
                                     </div>
 
-                                    {/* TOGGLE */}
                                     <div
                                         className={`relative h-7 w-12 shrink-0 rounded-full transition ${useWardrobe
-                                                ? "bg-[#8da184]"
-                                                : "bg-[#dfd5d7]"
+                                                ? "bg-[#8da184] dark:bg-[#718c69]"
+                                                : "bg-[#dfd5d7] dark:bg-[#51474b]"
                                             }`}
                                     >
                                         <span
-                                            className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-all ${useWardrobe
-                                                    ? "left-6"
-                                                    : "left-1"
+                                            className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-all ${useWardrobe ? "left-6" : "left-1"
                                                 }`}
                                         />
                                     </div>
-
                                 </div>
                             </button>
 
                             {useWardrobe && (
-                                <p className="mt-2 pl-1 text-[10px] text-[#829079]">
+                                <p className="mt-2 pl-1 text-[10px] text-[#829079] dark:text-[#a9c49f]">
                                     ✓ {wardrobe.length} wardrobe{" "}
                                     {wardrobe.length === 1
                                         ? "item is"
@@ -1292,102 +1409,82 @@ export default function AIStylistPage() {
                     </div>
 
                     {/* PERSONAL REQUEST */}
-                    <div className="mt-7 rounded-[22px] border border-[#eadde0] bg-white/65 p-5 sm:p-6">
-
+                    <div className="mt-7 rounded-[22px] border border-[#eadde0] bg-white/65 p-5 transition-colors dark:border-[#3b3437] dark:bg-[#242124] sm:p-6">
                         <div className="mb-4 flex items-start justify-between gap-4">
-
                             <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#b47787]">
+                                <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#b47787] dark:text-[#d09baa]">
                                     Personal Note To Your Stylist
                                 </p>
 
-                                <h4 className="mt-1 font-serif text-xl text-[#111111]">
+                                <h4 className="mt-1 font-serif text-xl text-[#111111] dark:text-[#f7f2f3]">
                                     Anything else you want?
                                 </h4>
 
-                                <p className="mt-1 text-xs leading-5 text-[#8c7a7f]">
+                                <p className="mt-1 text-xs leading-5 text-[#8c7a7f] dark:text-[#b8aaae]">
                                     Add any extra preference for this specific look.
                                 </p>
                             </div>
 
-                            <span className="hidden rounded-full bg-[#f8e8eb] px-3 py-1.5 text-[9px] font-semibold text-[#9b6e79] sm:block">
+                            <span className="hidden rounded-full bg-[#f8e8eb] px-3 py-1.5 text-[9px] font-semibold text-[#9b6e79] dark:bg-[#3b292f] dark:text-[#d09baa] sm:block">
                                 OPTIONAL
                             </span>
-
                         </div>
 
                         <textarea
                             value={request}
                             onChange={(event) =>
-                                setRequest(
-                                    event.target.value
-                                )
+                                setRequest(event.target.value)
                             }
                             placeholder="Example: Keep it modest, include my hijab, no bag, and make it comfortable for the evening..."
                             rows={4}
                             maxLength={500}
-                            className="w-full resize-none rounded-[18px] border border-[#e5d6da] bg-[#fffafa] px-4 py-4 text-sm leading-6 text-[#111111] outline-none transition placeholder:text-[#b1a1a5] focus:border-[#c88e9b] focus:ring-2 focus:ring-[#f4dfe3]"
+                            className="w-full resize-none rounded-[18px] border border-[#e5d6da] bg-[#fffafa] px-4 py-4 text-sm leading-6 text-[#111111] outline-none transition placeholder:text-[#b1a1a5] focus:border-[#c88e9b] focus:ring-2 focus:ring-[#f4dfe3] dark:border-[#494044] dark:bg-[#1b191b] dark:text-[#f7f2f3] dark:placeholder:text-[#897b80] dark:focus:border-[#c18b9a] dark:focus:ring-[#76515b]/40"
                         />
 
                         <div className="mt-2 flex items-center justify-between">
-
-                            <p className="text-[10px] text-[#a18f94]">
+                            <p className="text-[10px] text-[#a18f94] dark:text-[#a99ba0]">
                                 Write naturally — keep it simple.
                             </p>
 
-                            <p className="text-[10px] font-medium text-[#a18f94]">
+                            <p className="text-[10px] font-medium text-[#a18f94] dark:text-[#a99ba0]">
                                 {request.length}/500
                             </p>
-
                         </div>
-
                     </div>
 
-                    {/* PROFILE CONTEXT */}
-
                     {/* PERSONAL STYLE CONTEXT */}
-
                     {!isLoadingContext && profile && (
-                        <div className="mt-6 overflow-hidden rounded-[22px] border border-[#eadde0] bg-[#fcf7f6]">
-
+                        <div className="mt-6 overflow-hidden rounded-[22px] border border-[#eadde0] bg-[#fcf7f6] transition-colors dark:border-[#3b3437] dark:bg-[#242124]">
                             <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-
                                 <div className="flex items-start gap-3">
-
-                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f5dfe3] text-[#a87582]">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f5dfe3] text-[#a87582] dark:bg-[#3b292f] dark:text-[#d09baa]">
                                         ✦
                                     </div>
 
                                     <div>
-                                        <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#b47787]">
+                                        <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#b47787] dark:text-[#d09baa]">
                                             Your Style DNA
                                         </p>
 
-                                        <h4 className="mt-1 font-serif text-xl text-[#111111]">
+                                        <h4 className="mt-1 font-serif text-xl text-[#111111] dark:text-[#f7f2f3]">
                                             Stylora already knows your style.
                                         </h4>
 
-                                        <p className="mt-1 text-xs leading-5 text-[#8c7a7f]">
+                                        <p className="mt-1 text-xs leading-5 text-[#8c7a7f] dark:text-[#b8aaae]">
                                             These preferences will automatically guide your recommendation.
                                         </p>
                                     </div>
-
                                 </div>
 
-                                <span className="w-fit rounded-full border border-[#d9e5d5] bg-[#eef5eb] px-3 py-1.5 text-[9px] font-semibold text-[#657d5e]">
+                                <span className="w-fit rounded-full border border-[#d9e5d5] bg-[#eef5eb] px-3 py-1.5 text-[9px] font-semibold text-[#657d5e] dark:border-[#49614a] dark:bg-[#1d2b20] dark:text-[#a9c49f]">
                                     ✓ PROFILE CONNECTED
                                 </span>
-
                             </div>
 
-                            <div className="border-t border-[#eadde0] bg-white/55 px-5 py-4 sm:px-6">
-
+                            <div className="border-t border-[#eadde0] bg-white/55 px-5 py-4 dark:border-[#3b3437] dark:bg-[#1b191b]/60 sm:px-6">
                                 <div className="flex flex-wrap gap-2">
-
                                     {profile.body_type && (
-                                        <ContextTag
-                                            value={profile.body_type}
-                                        />
+                                        <ContextTag value={profile.body_type} />
                                     )}
 
                                     {profile.skin_tone && (
@@ -1398,57 +1495,37 @@ export default function AIStylistPage() {
                                         />
                                     )}
 
-                                    {profile.preferred_styles?.map(
-                                        (item) => (
-                                            <ContextTag
-                                                key={item}
-                                                value={item}
-                                            />
-                                        )
-                                    )}
+                                    {profile.preferred_styles?.map((item) => (
+                                        <ContextTag key={item} value={item} />
+                                    ))}
 
-                                    {profile.favorite_colors?.map(
-                                        (item) => (
-                                            <ContextTag
-                                                key={`color-${item}`}
-                                                value={item}
-                                            />
-                                        )
-                                    )}
+                                    {profile.favorite_colors?.map((item) => (
+                                        <ContextTag
+                                            key={`color-${item}`}
+                                            value={item}
+                                        />
+                                    ))}
 
-                                    {profile.modesty_preferences?.map(
-                                        (item) => (
-                                            <ContextTag
-                                                key={`modesty-${item}`}
-                                                value={item}
-                                            />
-                                        )
-                                    )}
-
+                                    {profile.modesty_preferences?.map((item) => (
+                                        <ContextTag
+                                            key={`modesty-${item}`}
+                                            value={item}
+                                        />
+                                    ))}
                                 </div>
-
                             </div>
-
                         </div>
                     )}
 
-                    {/* GENERATE */}
-
                     {/* GENERATE OUTFIT */}
-
-                    <div className="mt-7 border-t border-[#eadde0] pt-6">
-
+                    <div className="mt-7 border-t border-[#eadde0] pt-6 dark:border-[#3b3437]">
                         <button
                             type="submit"
-                            disabled={
-                                isLoadingContext ||
-                                isGenerating
-                            }
-                            className="group flex w-full items-center justify-between rounded-full bg-[#111111] px-6 py-4 text-left text-white shadow-[0_12px_30px_rgba(17,17,17,0.12)] transition hover:bg-[#9f6674] disabled:cursor-not-allowed disabled:opacity-50 sm:px-7"
+                            disabled={isLoadingContext || isGenerating}
+                            className="group flex w-full items-center justify-between rounded-full bg-[#111111] px-6 py-4 text-left text-white shadow-[0_12px_30px_rgba(17,17,17,0.12)] transition hover:bg-[#9f6674] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[#c18b9a] dark:text-[#171214] dark:hover:bg-[#d09baa] sm:px-7"
                         >
-
                             <div>
-                                <p className="text-[9px] font-medium uppercase tracking-[0.2em] text-white/60">
+                                <p className="text-[9px] font-medium uppercase tracking-[0.2em] text-white/60 dark:text-[#39272c]/70">
                                     {isGenerating
                                         ? "Your stylist is working"
                                         : "Ready when you are"}
@@ -1463,33 +1540,27 @@ export default function AIStylistPage() {
                                 </p>
                             </div>
 
-                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-lg text-[#111111] transition group-hover:translate-x-1">
+                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-lg text-[#111111] transition group-hover:translate-x-1 dark:bg-[#211c1e] dark:text-[#f7f2f3]">
                                 →
                             </span>
-
                         </button>
 
-                        <p className="mt-3 text-center text-[10px] text-[#9c898e]">
+                        <p className="mt-3 text-center text-[10px] text-[#9c898e] dark:text-[#a99ba0]">
                             Personalized using your Style DNA and selected preferences.
                         </p>
-
                     </div>
                 </form>
 
                 {/* AI RECOMMENDATION */}
-
                 {aiRecommendation && (
-                    <section className="mt-6 rounded-[24px] border border-[#f1e4e8] bg-white p-6 sm:p-8">
+                    <section className="mt-6 rounded-[24px] border border-[#f1e4e8] bg-white p-6 transition-colors duration-300 dark:border-[#3b3437] dark:bg-[#1b191b] sm:p-8">
 
                         {/* PREMIUM VIRTUAL TRY-ON */}
-
-                        <div className="mb-8 overflow-hidden rounded-[30px] border border-[#eadfe1] bg-gradient-to-br from-[#f8e8ea] via-[#fcf5f3] to-[#f4dddf]">
-
+                        <div className="mb-8 overflow-hidden rounded-[30px] border border-[#eadfe1] bg-gradient-to-br from-[#f8e8ea] via-[#fcf5f3] to-[#f4dddf] dark:border-[#49373d] dark:from-[#302328] dark:via-[#282124] dark:to-[#34252b]">
                             <div className="grid md:grid-cols-[minmax(320px,0.9fr)_1.1fr]">
 
                                 {/* AVATAR VISUAL */}
-                                <div className="relative min-h-[520px] overflow-hidden bg-[#f4e5e4]">
-
+                                <div className="relative min-h-[520px] overflow-hidden bg-[#f4e5e4] dark:bg-[#242124]">
                                     {generatedAvatarUrl ? (
                                         <img
                                             src={generatedAvatarUrl}
@@ -1504,27 +1575,24 @@ export default function AIStylistPage() {
                                         />
                                     ) : (
                                         <div className="flex min-h-[520px] items-center justify-center px-8 text-center">
-
                                             <div>
-                                                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-[#e3cfd4] bg-white/70 text-4xl">
+                                                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-[#e3cfd4] bg-white/70 text-4xl dark:border-[#59414a] dark:bg-[#302328]">
                                                     ♡
                                                 </div>
 
-                                                <p className="mt-5 font-serif text-2xl text-[#111111]">
+                                                <p className="mt-5 font-serif text-2xl text-[#111111] dark:text-[#f7f2f3]">
                                                     Your avatar starts here.
                                                 </p>
 
-                                                <p className="mx-auto mt-2 max-w-[260px] text-xs leading-5 text-[#88767b]">
+                                                <p className="mx-auto mt-2 max-w-[260px] text-xs leading-5 text-[#88767b] dark:text-[#c0b3b7]">
                                                     Upload a full-body photo from your Profile
                                                     to unlock Stylora Virtual Try-On.
                                                 </p>
                                             </div>
-
                                         </div>
                                     )}
 
-                                    {/* IMAGE BADGE */}
-                                    <div className="absolute left-4 top-4 rounded-full border border-white/60 bg-white/80 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-[#795f66] shadow-sm backdrop-blur-md">
+                                    <div className="absolute left-4 top-4 rounded-full border border-white/60 bg-white/80 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-[#795f66] shadow-sm backdrop-blur-md dark:border-[#59414a] dark:bg-[#1b191b]/85 dark:text-[#e5cbd2]">
                                         {generatedAvatarUrl
                                             ? "✦ AI Try-On Preview"
                                             : "Your Avatar"}
@@ -1535,63 +1603,53 @@ export default function AIStylistPage() {
                                             Styled by Stylora ✦
                                         </div>
                                     )}
-
                                 </div>
-
 
                                 {/* TRY-ON CONTENT */}
                                 <div className="relative flex flex-col justify-center p-6 sm:p-8 lg:p-10">
-
-                                    <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-white/55 blur-3xl" />
+                                    <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-white/55 blur-3xl dark:bg-[#c18b9a]/10" />
 
                                     <div className="relative">
-
-                                        <div className="inline-flex items-center gap-2 rounded-full border border-[#e4cdd2] bg-white/65 px-3.5 py-2">
-                                            <span className="text-[#a87582]">
+                                        <div className="inline-flex items-center gap-2 rounded-full border border-[#e4cdd2] bg-white/65 px-3.5 py-2 dark:border-[#59414a] dark:bg-[#211c1e]/75">
+                                            <span className="text-[#a87582] dark:text-[#d09baa]">
                                                 ✦
                                             </span>
 
-                                            <span className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#986a75]">
+                                            <span className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#986a75] dark:text-[#d09baa]">
                                                 Stylora Virtual Try-On
                                             </span>
                                         </div>
 
-                                        <h3 className="mt-5 max-w-[420px] font-serif text-3xl leading-[1.05] tracking-[-0.04em] text-[#111111] sm:text-4xl">
+                                        <h3 className="mt-5 max-w-[420px] font-serif text-3xl leading-[1.05] tracking-[-0.04em] text-[#111111] dark:text-[#f7f2f3] sm:text-4xl">
                                             See your new look
-                                            <span className="italic text-[#a87582]">
+                                            <span className="italic text-[#a87582] dark:text-[#d09baa]">
                                                 {" "}before you wear it.
                                             </span>
                                         </h3>
 
-                                        <p className="mt-4 max-w-[440px] text-sm leading-6 text-[#78686c]">
+                                        <p className="mt-4 max-w-[440px] text-sm leading-6 text-[#78686c] dark:text-[#c0b3b7]">
                                             Stylora brings together your full-body photo and
                                             the wardrobe pieces selected for this recommendation
                                             to create a personalized fashion preview.
                                         </p>
 
-
-                                        {/* READY STATE */}
                                         {generatedAvatarUrl ? (
-                                            <div className="mt-6 rounded-[18px] border border-[#d8e4d4] bg-[#eef5eb] p-4">
-
+                                            <div className="mt-6 rounded-[18px] border border-[#d8e4d4] bg-[#eef5eb] p-4 dark:border-[#49614a] dark:bg-[#1d2b20]">
                                                 <div className="flex items-center gap-3">
-
-                                                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#698062]">
+                                                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#698062] dark:bg-[#2c3c2e] dark:text-[#a9c49f]">
                                                         ✓
                                                     </div>
 
                                                     <div>
-                                                        <p className="text-xs font-semibold text-[#5f7658]">
+                                                        <p className="text-xs font-semibold text-[#5f7658] dark:text-[#c2d9b9]">
                                                             Your try-on is ready
                                                         </p>
 
-                                                        <p className="mt-0.5 text-[10px] text-[#81907c]">
+                                                        <p className="mt-0.5 text-[10px] text-[#81907c] dark:text-[#a9c49f]">
                                                             Your generated look can now be saved.
                                                         </p>
                                                     </div>
-
                                                 </div>
-
                                             </div>
                                         ) : (
                                             <button
@@ -1601,7 +1659,7 @@ export default function AIStylistPage() {
                                                     isGeneratingAvatar ||
                                                     !avatarBodyDisplayUrl
                                                 }
-                                                className="group mt-7 flex w-fit items-center gap-4 rounded-full bg-[#111111] px-6 py-3.5 text-white transition hover:bg-[#9f6674] disabled:cursor-not-allowed disabled:opacity-45"
+                                                className="group mt-7 flex w-fit items-center gap-4 rounded-full bg-[#111111] px-6 py-3.5 text-white transition hover:bg-[#9f6674] disabled:cursor-not-allowed disabled:opacity-45 dark:bg-[#c18b9a] dark:text-[#171214] dark:hover:bg-[#d09baa]"
                                             >
                                                 <span className="text-[10px] font-semibold uppercase tracking-[0.1em]">
                                                     {isGeneratingAvatar
@@ -1610,56 +1668,43 @@ export default function AIStylistPage() {
                                                 </span>
 
                                                 {!isGeneratingAvatar && (
-                                                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm text-[#111111]">
+                                                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm text-[#111111] dark:bg-[#211c1e] dark:text-[#f7f2f3]">
                                                         →
                                                     </span>
                                                 )}
                                             </button>
                                         )}
 
-
-                                        {/* ERROR */}
                                         {avatarError && (
-                                            <p className="mt-4 rounded-[16px] border border-[#edcdd3] bg-[#fff0f2] px-4 py-3 text-xs leading-5 text-[#a65e6c]">
+                                            <p className="mt-4 rounded-[16px] border border-[#edcdd3] bg-[#fff0f2] px-4 py-3 text-xs leading-5 text-[#a65e6c] dark:border-[#713b45] dark:bg-[#2c191b] dark:text-[#f0a4aa]">
                                                 {avatarError}
                                             </p>
                                         )}
 
-
-                                        {/* MISSING AVATAR */}
                                         {!avatarBodyDisplayUrl && (
-                                            <div className="mt-5 border-t border-[#e3d2d6] pt-4">
-
-                                                <p className="text-[10px] leading-5 text-[#927e83]">
-                                                    <span className="font-semibold text-[#725f64]">
+                                            <div className="mt-5 border-t border-[#e3d2d6] pt-4 dark:border-[#49373d]">
+                                                <p className="text-[10px] leading-5 text-[#927e83] dark:text-[#b8aaae]">
+                                                    <span className="font-semibold text-[#725f64] dark:text-[#e0cbd1]">
                                                         Avatar needed:
                                                     </span>{" "}
                                                     Go to Profile → Stylora Avatar and upload
                                                     your full-body photo first.
                                                 </p>
-
                                             </div>
                                         )}
-
                                     </div>
-
                                 </div>
-
                             </div>
                         </div>
 
                         {/* STYLORA PICK */}
-
-                        <div className="relative overflow-hidden rounded-[24px] border border-[#eadde0] bg-gradient-to-r from-[#fcf6f4] via-white to-[#f8e8eb] p-6 sm:p-7">
-
-                            <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-[#f1d5da]/45 blur-3xl" />
+                        <div className="relative overflow-hidden rounded-[24px] border border-[#eadde0] bg-gradient-to-r from-[#fcf6f4] via-white to-[#f8e8eb] p-6 transition-colors dark:border-[#49373d] dark:from-[#282124] dark:via-[#1b191b] dark:to-[#302328] sm:p-7">
+                            <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-[#f1d5da]/45 blur-3xl dark:bg-[#c18b9a]/10" />
 
                             <div className="relative">
-
                                 <div className="flex flex-wrap items-center justify-between gap-3">
-
-                                    <div className="inline-flex items-center gap-2 rounded-full bg-[#111111] px-3.5 py-2 text-white">
-                                        <span className="text-[#f8d7da]">
+                                    <div className="inline-flex items-center gap-2 rounded-full bg-[#111111] px-3.5 py-2 text-white dark:bg-[#c18b9a] dark:text-[#171214]">
+                                        <span className="text-[#f8d7da] dark:text-[#39272c]">
                                             ✦
                                         </span>
 
@@ -1668,197 +1713,155 @@ export default function AIStylistPage() {
                                         </span>
                                     </div>
 
-                                    <p className="font-serif text-sm italic text-[#a87582]">
+                                    <p className="font-serif text-sm italic text-[#a87582] dark:text-[#d09baa]">
                                         Curated for you ♡
                                     </p>
-
                                 </div>
 
-                                <h3 className="mt-5 max-w-[720px] font-serif text-3xl leading-tight tracking-[-0.035em] text-[#111111] sm:text-4xl">
+                                <h3 className="mt-5 max-w-[720px] font-serif text-3xl leading-tight tracking-[-0.035em] text-[#111111] dark:text-[#f7f2f3] sm:text-4xl">
                                     {aiRecommendation.title}
                                 </h3>
 
-                                <p className="mt-3 max-w-[760px] text-sm leading-6 text-[#75666a]">
+                                <p className="mt-3 max-w-[760px] text-sm leading-6 text-[#75666a] dark:text-[#c0b3b7]">
                                     {aiRecommendation.summary}
                                 </p>
-
                             </div>
-
                         </div>
 
                         {/* SELECTED WARDROBE PIECES */}
-
                         {selectedWardrobeItems.length > 0 && (
                             <div className="mt-8">
-
-                                {/* SECTION HEADER */}
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-
                                     <div>
-                                        <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-[#b47787]">
+                                        <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-[#b47787] dark:text-[#d09baa]">
                                             From Your Closet
                                         </p>
 
-                                        <h4 className="mt-1 font-serif text-2xl text-[#111111]">
+                                        <h4 className="mt-1 font-serif text-2xl text-[#111111] dark:text-[#f7f2f3]">
                                             Your Outfit
                                         </h4>
 
-                                        <p className="mt-1 text-xs leading-5 text-[#8c7a7f]">
+                                        <p className="mt-1 text-xs leading-5 text-[#8c7a7f] dark:text-[#b8aaae]">
                                             Pieces Stylora selected from your wardrobe for this look.
                                         </p>
                                     </div>
 
-                                    <span className="w-fit rounded-full border border-[#e6d5d9] bg-[#fcf5f5] px-3.5 py-2 text-[9px] font-semibold text-[#8f6871]">
+                                    <span className="w-fit rounded-full border border-[#e6d5d9] bg-[#fcf5f5] px-3.5 py-2 text-[9px] font-semibold text-[#8f6871] dark:border-[#59414a] dark:bg-[#302328] dark:text-[#e0bdc7]">
                                         {selectedWardrobeItems.length}{" "}
                                         {selectedWardrobeItems.length === 1
                                             ? "PIECE"
                                             : "PIECES"}
                                     </span>
-
                                 </div>
 
-
-                                {/* OUTFIT CARDS */}
                                 <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                                    {selectedWardrobeItems.map((item) => (
+                                        <article
+                                            key={item.id}
+                                            className="group overflow-hidden rounded-[22px] border border-[#eadfe1] bg-[#fcf8f7] transition duration-300 hover:-translate-y-1 hover:shadow-[0_16px_35px_rgba(72,46,53,0.09)] dark:border-[#3b3437] dark:bg-[#242124] dark:hover:shadow-none"
+                                        >
+                                            <div className="relative aspect-[4/5] overflow-hidden bg-[#f6ecea] dark:bg-[#30282b]">
+                                                {item.display_url ? (
+                                                    <img
+                                                        src={item.display_url}
+                                                        alt={item.name}
+                                                        className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                                                    />
+                                                ) : (
+                                                    <div className="flex h-full w-full flex-col items-center justify-center px-4 text-center">
+                                                        <span className="text-3xl">♡</span>
 
-                                    {selectedWardrobeItems.map(
-                                        (item) => (
-                                            <article
-                                                key={item.id}
-                                                className="group overflow-hidden rounded-[22px] border border-[#eadfe1] bg-[#fcf8f7] transition duration-300 hover:-translate-y-1 hover:shadow-[0_16px_35px_rgba(72,46,53,0.09)]"
-                                            >
+                                                        <p className="mt-2 text-[10px] text-[#9c888d] dark:text-[#b8aaae]">
+                                                            No clothing image
+                                                        </p>
+                                                    </div>
+                                                )}
 
-                                                {/* IMAGE */}
-                                                <div className="relative aspect-[4/5] overflow-hidden bg-[#f6ecea]">
+                                                <span className="absolute left-3 top-3 rounded-full border border-white/60 bg-white/85 px-3 py-1.5 text-[8px] font-semibold uppercase tracking-[0.12em] text-[#765f65] shadow-sm backdrop-blur-md dark:border-[#59414a] dark:bg-[#1b191b]/85 dark:text-[#e5cbd2]">
+                                                    {item.category}
+                                                </span>
+                                            </div>
 
-                                                    {item.display_url ? (
-                                                        <img
-                                                            src={item.display_url}
-                                                            alt={item.name}
-                                                            className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
-                                                        />
-                                                    ) : (
-                                                        <div className="flex h-full w-full flex-col items-center justify-center px-4 text-center">
+                                            <div className="p-4">
+                                                <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-[#b47787] dark:text-[#d09baa]">
+                                                    Selected Piece
+                                                </p>
 
-                                                            <span className="text-3xl">
-                                                                ♡
-                                                            </span>
+                                                <h5 className="mt-1 font-serif text-lg leading-tight text-[#111111] dark:text-[#f7f2f3]">
+                                                    {item.name}
+                                                </h5>
 
-                                                            <p className="mt-2 text-[10px] text-[#9c888d]">
-                                                                No clothing image
-                                                            </p>
-
-                                                        </div>
+                                                <div className="mt-3 flex flex-wrap gap-1.5">
+                                                    {item.color && (
+                                                        <span className="rounded-full border border-[#eadadd] bg-white px-2.5 py-1 text-[9px] text-[#705f64] dark:border-[#494044] dark:bg-[#30282b] dark:text-[#d4c2c7]">
+                                                            {item.color}
+                                                        </span>
                                                     )}
 
-                                                    <span className="absolute left-3 top-3 rounded-full border border-white/60 bg-white/85 px-3 py-1.5 text-[8px] font-semibold uppercase tracking-[0.12em] text-[#765f65] shadow-sm backdrop-blur-md">
-                                                        {item.category}
-                                                    </span>
-
+                                                    {item.brand && (
+                                                        <span className="rounded-full border border-[#eadadd] bg-white px-2.5 py-1 text-[9px] text-[#705f64] dark:border-[#494044] dark:bg-[#30282b] dark:text-[#d4c2c7]">
+                                                            {item.brand}
+                                                        </span>
+                                                    )}
                                                 </div>
-
-
-                                                {/* INFO */}
-                                                <div className="p-4">
-
-                                                    <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-[#b47787]">
-                                                        Selected Piece
-                                                    </p>
-
-                                                    <h5 className="mt-1 font-serif text-lg leading-tight text-[#111111]">
-                                                        {item.name}
-                                                    </h5>
-
-                                                    <div className="mt-3 flex flex-wrap gap-1.5">
-
-                                                        {item.color && (
-                                                            <span className="rounded-full border border-[#eadadd] bg-white px-2.5 py-1 text-[9px] text-[#705f64]">
-                                                                {item.color}
-                                                            </span>
-                                                        )}
-
-                                                        {item.brand && (
-                                                            <span className="rounded-full border border-[#eadadd] bg-white px-2.5 py-1 text-[9px] text-[#705f64]">
-                                                                {item.brand}
-                                                            </span>
-                                                        )}
-
-                                                    </div>
-
-                                                </div>
-
-                                            </article>
-                                        )
-                                    )}
-
+                                            </div>
+                                        </article>
+                                    ))}
                                 </div>
-
                             </div>
                         )}
 
                         {/* STYLIST NOTES */}
-
                         {aiRecommendation.styling_tips.length > 0 && (
-                            <section className="mt-8 overflow-hidden rounded-[26px] border border-[#eadfe1] bg-gradient-to-br from-[#fcf7f5] via-white to-[#f8ebed]">
-
-                                {/* HEADER */}
-                                <div className="border-b border-[#eadde0] px-5 py-5 sm:px-6">
-
-                                    <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-[#b47787]">
+                            <section className="mt-8 overflow-hidden rounded-[26px] border border-[#eadfe1] bg-gradient-to-br from-[#fcf7f5] via-white to-[#f8ebed] dark:border-[#3b3437] dark:from-[#242124] dark:via-[#1b191b] dark:to-[#302328]">
+                                <div className="border-b border-[#eadde0] px-5 py-5 dark:border-[#3b3437] sm:px-6">
+                                    <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-[#b47787] dark:text-[#d09baa]">
                                         ✦ From Your Stylist
                                     </p>
 
-                                    <h4 className="mt-1 font-serif text-2xl text-[#111111]">
+                                    <h4 className="mt-1 font-serif text-2xl text-[#111111] dark:text-[#f7f2f3]">
                                         Styling Notes
                                     </h4>
 
-                                    <p className="mt-1 text-xs text-[#8c7a7f]">
+                                    <p className="mt-1 text-xs text-[#8c7a7f] dark:text-[#b8aaae]">
                                         Small details that bring your complete look together.
                                     </p>
-
                                 </div>
 
-                                {/* TIPS */}
                                 <div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-6">
-
                                     {aiRecommendation.styling_tips.map(
                                         (tip, index) => (
                                             <div
                                                 key={index}
-                                                className="flex gap-3 rounded-[18px] border border-[#eadde0] bg-white/75 p-4"
+                                                className="flex gap-3 rounded-[18px] border border-[#eadde0] bg-white/75 p-4 dark:border-[#3b3437] dark:bg-[#242124]"
                                             >
-                                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#f8e5e8] text-[10px] font-semibold text-[#a87582]">
+                                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#f8e5e8] text-[10px] font-semibold text-[#a87582] dark:bg-[#3b292f] dark:text-[#d09baa]">
                                                     {index + 1}
                                                 </span>
 
-                                                <p className="text-xs leading-5 text-[#6f6064]">
+                                                <p className="text-xs leading-5 text-[#6f6064] dark:text-[#c0b3b7]">
                                                     {tip}
                                                 </p>
                                             </div>
                                         )
                                     )}
-
                                 </div>
-
                             </section>
                         )}
 
                         {/* WHY THIS LOOK WORKS */}
-
                         <div className="mt-8">
-
                             <div className="mb-4">
-                                <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-[#b47787]">
+                                <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-[#b47787] dark:text-[#d09baa]">
                                     The Details
                                 </p>
 
-                                <h4 className="mt-1 font-serif text-2xl text-[#111111]">
+                                <h4 className="mt-1 font-serif text-2xl text-[#111111] dark:text-[#f7f2f3]">
                                     Why this look works.
                                 </h4>
                             </div>
 
                             <div className="grid gap-4 sm:grid-cols-2">
-
                                 <RecommendationNote
                                     icon="🎨"
                                     title="Color Story"
@@ -1882,94 +1885,73 @@ export default function AIStylistPage() {
                                     title="Why It Works"
                                     text={aiRecommendation.why_it_works}
                                 />
-
                             </div>
-
                         </div>
 
                         {/* OPTIONAL ADDITIONS */}
-
                         {aiRecommendation.external_suggestions.length > 0 && (
-                            <section className="mt-8 overflow-hidden rounded-[24px] border border-[#eadfe1] bg-[#fcf8f7]">
-
+                            <section className="mt-8 overflow-hidden rounded-[24px] border border-[#eadfe1] bg-[#fcf8f7] dark:border-[#3b3437] dark:bg-[#242124]">
                                 <div className="flex items-start gap-4 p-5 sm:p-6">
-
-                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f7e4e7] text-lg">
+                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f7e4e7] text-lg dark:bg-[#3b292f]">
                                         ➕
                                     </div>
 
                                     <div className="flex-1">
-
-                                        <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#b47787]">
+                                        <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#b47787] dark:text-[#d09baa]">
                                             Complete The Look
                                         </p>
 
-                                        <h4 className="mt-1 font-serif text-xl text-[#111111]">
+                                        <h4 className="mt-1 font-serif text-xl text-[#111111] dark:text-[#f7f2f3]">
                                             Optional Additions
                                         </h4>
 
-                                        <p className="mt-1 text-xs leading-5 text-[#8c7a7f]">
+                                        <p className="mt-1 text-xs leading-5 text-[#8c7a7f] dark:text-[#b8aaae]">
                                             You don&apos;t need these pieces, but they could add
                                             another finishing touch to your look.
                                         </p>
 
                                         <div className="mt-4 flex flex-wrap gap-2">
-
                                             {aiRecommendation.external_suggestions.map(
                                                 (suggestion, index) => (
                                                     <span
                                                         key={index}
-                                                        className="rounded-full border border-[#e5d5d9] bg-white px-3.5 py-2 text-[10px] leading-4 text-[#705f64]"
+                                                        className="rounded-full border border-[#e5d5d9] bg-white px-3.5 py-2 text-[10px] leading-4 text-[#705f64] dark:border-[#494044] dark:bg-[#30282b] dark:text-[#d4c2c7]"
                                                     >
                                                         + {suggestion}
                                                     </span>
                                                 )
                                             )}
-
                                         </div>
-
                                     </div>
-
                                 </div>
-
                             </section>
                         )}
 
                         {/* FINAL ACTIONS */}
-
-                        <div className="mt-8 border-t border-[#eadde0] pt-7">
-
-                            <div className="flex flex-col gap-4 rounded-[24px] bg-gradient-to-r from-[#f8e7ea] via-[#fcf5f3] to-[#f6e3e5] p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-
-                                {/* LEFT */}
+                        <div className="mt-8 border-t border-[#eadde0] pt-7 dark:border-[#3b3437]">
+                            <div className="flex flex-col gap-4 rounded-[24px] bg-gradient-to-r from-[#f8e7ea] via-[#fcf5f3] to-[#f6e3e5] p-5 dark:from-[#302328] dark:via-[#282124] dark:to-[#34252b] sm:flex-row sm:items-center sm:justify-between sm:p-6">
                                 <div>
-                                    <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#b47787]">
+                                    <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#b47787] dark:text-[#d09baa]">
                                         Love This Look?
                                     </p>
 
-                                    <h4 className="mt-1 font-serif text-xl text-[#111111]">
+                                    <h4 className="mt-1 font-serif text-xl text-[#111111] dark:text-[#f7f2f3]">
                                         Make it part of your style story.
                                     </h4>
 
-                                    <p className="mt-1 text-xs text-[#8c7a7f]">
+                                    <p className="mt-1 text-xs text-[#8c7a7f] dark:text-[#b8aaae]">
                                         Save this recommendation or start fresh with a new idea.
                                     </p>
                                 </div>
 
-
-                                {/* BUTTONS */}
                                 <div className="flex flex-col gap-2 sm:flex-row">
-
                                     <button
                                         type="button"
                                         onClick={handleSaveLook}
-                                        disabled={
-                                            isSavingLook ||
-                                            lookSaved
-                                        }
+                                        disabled={isSavingLook || lookSaved}
                                         className={`rounded-full px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.09em] transition disabled:cursor-not-allowed ${lookSaved
-                                                ? "border border-[#d5e2d1] bg-[#edf5ea] text-[#62785b]"
-                                                : "bg-[#111111] text-white hover:bg-[#9f6674]"
+                                                ? "border border-[#d5e2d1] bg-[#edf5ea] text-[#62785b] dark:border-[#49614a] dark:bg-[#1d2b20] dark:text-[#b8d0ae]"
+                                                : "bg-[#111111] text-white hover:bg-[#9f6674] dark:bg-[#c18b9a] dark:text-[#171214] dark:hover:bg-[#d09baa]"
                                             }`}
                                     >
                                         {isSavingLook
@@ -1979,28 +1961,23 @@ export default function AIStylistPage() {
                                                 : "♡ Save This Look"}
                                     </button>
 
-
                                     <button
                                         type="button"
                                         onClick={handleClearRecommendation}
-                                        className="rounded-full border border-[#dfcbd0] bg-white/80 px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#80656c] transition hover:border-[#c88e9b] hover:bg-white hover:text-[#111111]"
+                                        className="rounded-full border border-[#dfcbd0] bg-white/80 px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#80656c] transition hover:border-[#c88e9b] hover:bg-white hover:text-[#111111] dark:border-[#59414a] dark:bg-[#242124] dark:text-[#e0cbd1] dark:hover:border-[#c18b9a] dark:hover:bg-[#302328] dark:hover:text-white"
                                     >
                                         Start New
                                         <span className="ml-2">↻</span>
                                     </button>
-
                                 </div>
-
                             </div>
-
                         </div>
-
                     </section>
                 )}
 
                 {aiError && (
-                    <section className="mt-6 rounded-[24px] border border-red-200 bg-red-50 p-6">
-                        <p className="text-sm text-red-700">
+                    <section className="mt-6 rounded-[24px] border border-red-200 bg-red-50 p-6 dark:border-red-900 dark:bg-[#2c191b]">
+                        <p className="text-sm text-red-700 dark:text-[#f0a4aa]">
                             {aiError}
                         </p>
                     </section>
@@ -2020,8 +1997,8 @@ function StatusTag({
     return (
         <span
             className={`rounded-full px-3 py-1.5 text-xs font-medium ${ready
-                ? "bg-green-50 text-green-700"
-                : "bg-red-50 text-red-600"
+                    ? "bg-green-50 text-green-700 dark:bg-[#1d2b20] dark:text-[#a9c49f]"
+                    : "bg-red-50 text-red-600 dark:bg-[#2c191b] dark:text-[#f0a4aa]"
                 }`}
         >
             {ready ? "✓ " : "• "}
@@ -2036,7 +2013,7 @@ function ContextTag({
     value: string;
 }) {
     return (
-        <span className="rounded-full border border-[#e6d6da] bg-white px-3.5 py-2 text-[10px] font-medium text-[#725f64] shadow-[0_4px_12px_rgba(91,58,67,0.03)]">
+        <span className="rounded-full border border-[#e6d6da] bg-white px-3.5 py-2 text-[10px] font-medium text-[#725f64] shadow-[0_4px_12px_rgba(91,58,67,0.03)] dark:border-[#494044] dark:bg-[#30282b] dark:text-[#e0cbd1] dark:shadow-none">
             {value}
         </span>
     );
@@ -2056,38 +2033,31 @@ function RecommendationNote({
     }
 
     return (
-        <div className="group rounded-[22px] border border-[#eadfe1] bg-[#fcf8f7] p-5 transition hover:bg-white hover:shadow-[0_12px_30px_rgba(91,58,67,0.06)]">
-
+        <div className="group rounded-[22px] border border-[#eadfe1] bg-[#fcf8f7] p-5 transition hover:bg-white hover:shadow-[0_12px_30px_rgba(91,58,67,0.06)] dark:border-[#3b3437] dark:bg-[#242124] dark:hover:bg-[#30282b] dark:hover:shadow-none">
             <div className="flex items-start gap-4">
-
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f7e4e7] text-base">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f7e4e7] text-base dark:bg-[#3b292f]">
                     {icon}
                 </div>
 
                 <div>
-                    <p className="font-serif text-lg text-[#111111]">
+                    <p className="font-serif text-lg text-[#111111] dark:text-[#f7f2f3]">
                         {title}
                     </p>
 
-                    <p className="mt-2 text-xs leading-5 text-[#75666a]">
+                    <p className="mt-2 text-xs leading-5 text-[#75666a] dark:text-[#c0b3b7]">
                         {text}
                     </p>
                 </div>
-
             </div>
-
         </div>
     );
 }
 
-function formatValue(
-    value: string
-) {
+function formatValue(value: string) {
     return value
         .replaceAll("_", " ")
         .replace(
             /\b\w/g,
-            (letter) =>
-                letter.toUpperCase()
+            (letter) => letter.toUpperCase()
         );
 }

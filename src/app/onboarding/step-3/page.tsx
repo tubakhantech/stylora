@@ -59,75 +59,83 @@ export default function OnboardingStepThreePage() {
         setMessage("");
         setMessageType(null);
 
-        if (!fitPreference) {
+        // Validate all selected values against allowed options
+        if (!FIT_OPTIONS.includes(fitPreference)) {
             setMessageType("error");
-            setMessage("Please select your preferred fit.");
+            setMessage("Please select a valid preferred fit.");
             return;
         }
 
-        if (!comfortPriority) {
+        if (!COMFORT_OPTIONS.includes(comfortPriority)) {
             setMessageType("error");
-            setMessage("Please select your comfort priority.");
+            setMessage("Please select a valid comfort priority.");
             return;
         }
 
-        if (!styleGoal) {
+        if (!STYLE_GOAL_OPTIONS.includes(styleGoal)) {
             setMessageType("error");
-            setMessage("Please select your styling goal.");
+            setMessage("Please select a valid styling goal.");
             return;
         }
 
-        if (!accessoriesPreference) {
+        if (!ACCESSORY_OPTIONS.includes(accessoriesPreference)) {
             setMessageType("error");
-            setMessage("Please select your accessories preference.");
+            setMessage("Please select a valid accessories preference.");
             return;
         }
 
         setIsSubmitting(true);
 
-        const supabase = createClient();
+        try {
+            const supabase = createClient();
 
-        const {
-            data: { user },
-        } = await supabase.auth.getUser();
+            const {
+                data: { user },
+                error: authError,
+            } = await supabase.auth.getUser();
 
-        if (!user) {
+            if (authError || !user) {
+                setMessageType("error");
+                setMessage(
+                    "Your session has expired. Please log in again."
+                );
+                return;
+            }
+
+            const { error } = await supabase
+                .from("profiles")
+                .update({
+                    fit_preference: fitPreference,
+                    comfort_priority: comfortPriority,
+                    style_goal: styleGoal,
+                    accessories_preference: accessoriesPreference,
+                    onboarding_step: 3,
+                    onboarding_completed: true,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("id", user.id);
+
+            if (error) {
+                setMessageType("error");
+                setMessage(error.message);
+                return;
+            }
+
+            setMessageType("success");
+            setMessage("Your Stylora profile is ready!");
+
+            setTimeout(() => {
+                router.push("/dashboard");
+                router.refresh();
+            }, 700);
+        } catch (error) {
+            console.error("Onboarding Step 3 error:", error);
+
+            setMessageType("error");
+            setMessage("Something went wrong. Please try again.");
+        } finally {
             setIsSubmitting(false);
-            setMessageType("error");
-            setMessage(
-                "Your session has expired. Please log in again."
-            );
-            return;
         }
-
-        const { error } = await supabase
-            .from("profiles")
-            .update({
-                fit_preference: fitPreference,
-                comfort_priority: comfortPriority,
-                style_goal: styleGoal,
-                accessories_preference: accessoriesPreference,
-                onboarding_step: 3,
-                onboarding_completed: true,
-                updated_at: new Date().toISOString(),
-            })
-            .eq("id", user.id);
-
-        setIsSubmitting(false);
-
-        if (error) {
-            setMessageType("error");
-            setMessage(error.message);
-            return;
-        }
-
-        setMessageType("success");
-        setMessage("Your Stylora profile is ready!");
-
-        setTimeout(() => {
-            router.push("/dashboard");
-            router.refresh();
-        }, 700);
     };
 
     const selectedStyle = {

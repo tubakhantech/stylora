@@ -40,7 +40,7 @@ export default function PasswordInput({
     return (
         <div className="flex flex-col gap-2">
             {label && (
-                <label className="text-sm font-medium text-black">
+                <label className="text-sm font-medium text-black dark:text-white">
                     {label}
                     {required && <span className="text-red-500"> *</span>}
                 </label>
