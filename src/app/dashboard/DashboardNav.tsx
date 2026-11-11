@@ -109,8 +109,12 @@ export default function DashboardNav({
                     >
                         <div className="flex items-center gap-3">
 
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f5dfe3] font-serif text-lg text-[#9f6674] transition group-hover:bg-[#edd2d8]">
-                                S
+                            <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full">
+                                <img
+                                    src="/Stylora%20favicon.png"
+                                    alt="Stylora Logo"
+                                    className="h-full w-full rounded-full object-cover"
+                                />
                             </div>
 
                             <div>
@@ -280,7 +284,7 @@ export default function DashboardNav({
                                     Welcome back
                                 </p>
 
-                                <p className="mt-1 max-w-[200px] truncate text-[15px] font-semibold text-[#f7f2f3]">
+                                <p className="truncate font-serif text-xl text-[#111111] dark:text-[#f7f2f3] sm:mt-0.5 sm:text-2xl">
                                     {displayName}
                                 </p>
 
